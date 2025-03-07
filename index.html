@@ -24,6 +24,15 @@
         const maxLng = 31.857014;
         let linesArray = [];
 
+
+        function localCoordinateToLatLng(x, y, viewBox) {
+            const latDiff = maxLat - minLat;
+            const lngDiff = maxLng - minLng;
+            const latLocalDiff = (y / viewBox.height) * latDiff;
+            const lngLocalDiff = (x / viewBox.width) * lngDiff;
+            return new L.LatLng(maxLat - latLocalDiff, minLng + lngLocalDiff);
+        }
+
         fetch('files/0.svg')
             .then(response => response.text())
             .then(svgText => {
@@ -33,7 +42,7 @@
                 if (doorsGroup) {
                     const lines = doorsGroup.getElementsByTagName('line');
                     const viewBox = svgDoc.documentElement.viewBox.baseVal;
-                    const linesArray = [];
+                    linesArray = [];
                     Array.from(lines).forEach(line => {
                         const id = line.id;
                         const x1 = parseFloat(line.getAttribute('x1'));
@@ -42,21 +51,14 @@
                         const y2 = parseFloat(line.getAttribute('y2'));
                         const startLatLng = localCoordinateToLatLng(x1, y1, viewBox);
                         const endLatLng = localCoordinateToLatLng(x2, y2, viewBox);
-                        linesArray.push({ id, start: startLatLng, end: endLatLng });
+                        // Ensure the correct format for lat/lng is saved
+                        linesArray.push({ id, start: { lat: startLatLng.lat, lng: startLatLng.lng }, end: { lat: endLatLng.lat, lng: endLatLng.lng } });
                     });
                     console.log('Doors:', linesArray); // Log the doors (lines) array
                 }
             })
             .catch(error => console.error('SVG yüklenirken hata:', error));
 
-        function localCoordinateToLatLng(x, y, viewBox) {
-            const latDiff = maxLat - minLat;
-            const lngDiff = maxLng - minLng;
-            const latLocalDiff = (y / viewBox.height) * latDiff;
-            const lngLocalDiff = (x / viewBox.width) * lngDiff;
-            return new L.LatLng(maxLat - latLocalDiff, minLng + lngLocalDiff);
-        }
-        
         const map = new L.Map("map", {
             center: [37.425930, 31.852214],
             zoom: 18,
@@ -103,24 +105,31 @@
             } else {
                 console.log("✅ İçeridesiniz"); // Debugging if inside
                 findClosestLine(lat, lng);
-                
+
             }
         }
 
         function findClosestLine(lat, lng) {
             let closestLine = null;
             let minDistance = Infinity;
+
+            // Ensure line coordinates are compared correctly
             linesArray.forEach(line => {
-                let startDist = map.distance([lat, lng], [line.start.lat, line.start.lng]);
-                let endDist = map.distance([lat, lng], [line.end.lat, line.end.lng]);
-                let minLineDist = Math.min(startDist, endDist);
+                const startDist = map.distance([lat, lng], [line.start.lat, line.start.lng]);
+                const endDist = map.distance([lat, lng], [line.end.lat, line.end.lng]);
+                const minLineDist = Math.min(startDist, endDist);
+
                 if (minLineDist < minDistance) {
                     minDistance = minLineDist;
                     closestLine = line;
                 }
             });
+
+            // If a closest line is found, display the result
             if (closestLine) {
                 showPopup(`En Yakın Kapı: ${closestLine.id}`, "blue");
+            } else {
+                showPopup("Kapı Bulunamadı", "orange");
             }
         }
     </script>
