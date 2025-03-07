@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Leaflet.SimpleLocate - Demo</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <script src="dist/leaflet-simple-locate.min.js"></script>
+    
+    <link rel="stylesheet" href="examples/demo.css" />
+    <style>
+             html {
+            font-size: 16px;
+        }
+
+        body {
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+            --primary-rgb: 25, 135, 84;
+        }
+
+        #map {
+            height: calc(var(--vh, 1vh) * 100);
+            width: 100vw;
+            /* transform: rotate(var(--leaflet-simple-locate-orientation, 0deg)); */
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <script>
+        "use strict";
+
+        const minLat = 40.9931327, maxLat = 40.9897231;
+        const minLng = 29.0386154, maxLng = 29.0350682;
+        let linesArray = [];
+
+        fetch('files/0.svg')
+            .then(response => response.text())
+            .then(svgText => {
+                const parser = new DOMParser();
+                const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
+                const doorsGroup = svgDoc.getElementById('Doors');
+                if (doorsGroup) {
+                    const lines = doorsGroup.getElementsByTagName('line');
+                    const viewBox = svgDoc.documentElement.viewBox.baseVal;
+                    Array.from(lines).forEach(line => {
+                        const id = line.id;
+                        const x1 = parseFloat(line.getAttribute('x1'));
+                        const y1 = parseFloat(line.getAttribute('y1'));
+                        const x2 = parseFloat(line.getAttribute('x2'));
+                        const y2 = parseFloat(line.getAttribute('y2'));
+                        const startLatLng = localCoordinateToLatLng(x1, y1, viewBox);
+                        const endLatLng = localCoordinateToLatLng(x2, y2, viewBox);
+                        linesArray.push({ id, start: startLatLng, end: endLatLng });
+                    });
+                }
+            })
+            .catch(error => console.error('SVG yüklenirken hata:', error));
+
+        function localCoordinateToLatLng(x, y, viewBox) {
+            const latDiff = maxLat - minLat;
+            const lngDiff = maxLng - minLng;
+            const latLocalDiff = (y / viewBox.height) * latDiff;
+            const lngLocalDiff = (x / viewBox.width) * lngDiff;
+            return new L.LatLng(maxLat - latLocalDiff, minLng + lngLocalDiff);
+        }
+
+        const map = new L.Map("map", {
+            center: [40.991488, 29.036736],
+            zoom: 18,
+            zoomControl: false,
+        });
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        const control = new L.Control.SimpleLocate({
+            position: "topleft",
+            afterClick: (result) => {
+                if (result.geolocation) checkLocation(result.geolocation.lat, result.geolocation.lng);
+                else console.log("Konum alınamadı");
+            }
+        }).addTo(map);
+
+        function showPopup(message, color) {
+            let popup = L.popup().setLatLng(map.getCenter()).setContent(`<span style="color: ${color}">${message}</span>`).openOn(map);
+        }
+
+        function checkLocation(lat, lng) {
+            if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) {
+                showPopup("❌ Dışarıda", "red");
+            } else {
+                findClosestLine(lat, lng);
+            }
+        }
+
+        function findClosestLine(lat, lng) {
+            let closestLine = null;
+            let minDistance = Infinity;
+            linesArray.forEach(line => {
+                let startDist = map.distance([lat, lng], [line.start.lat, line.start.lng]);
+                let endDist = map.distance([lat, lng], [line.end.lat, line.end.lng]);
+                let minLineDist = Math.min(startDist, endDist);
+                if (minLineDist < minDistance) {
+                    minDistance = minLineDist;
+                    closestLine = line;
+                }
+            });
+            if (closestLine) {
+                showPopup(`En Yakın Kapı: ${closestLine.id}`, "blue");
+            }
+        }
+    </script>
+</body>
+</html>
