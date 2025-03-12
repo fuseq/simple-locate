@@ -21,8 +21,8 @@
 
         // Katların yükseklik bilgilerini JavaScript nesnesinde saklayacağız
         const floorsAltitude = {
-            0: 1,  // Kat 0 için altitude
-            1: 10  // Kat 1 için altitude
+            0: 1160,  // Kat 0 için altitude
+            1: 1170  // Kat 1 için altitude
         };
         const minLat = 37.427902, maxLat = 37.424307;
         const minLng = 31.845707, maxLng = 31.858478;
@@ -126,11 +126,7 @@
             } else if (altitude >= floorsAltitude[1]) {
                 console.log("Kat 1'de");
                 linesArray = linesArray1;
-            } else {
-                console.log("Dışarıda");
-                showPopup("❌ Dışarıda", "red");
-                return;
-            }
+            } 
 
             // Log the boundary values for debugging
             console.log("Min Lat:", minLat, "Max Lat:", maxLat);
