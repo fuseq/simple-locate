@@ -19,11 +19,15 @@
     <script>
         "use strict";
 
-        const minLat = 40.9931327, maxLat = 40.9897231;
-        const minLng = 29.0386154, maxLng = 29.0350682;
+        // Katların yükseklik bilgilerini JavaScript nesnesinde saklayacağız
+        const floorsAltitude = {
+            0: 1,  // Kat 0 için altitude
+            1: 10  // Kat 1 için altitude
+        };
+        const minLat = 37.427902, maxLat = 37.424307;
+        const minLng = 31.845707, maxLng = 31.858478;
         let linesArray0 = [];
         let linesArray1 = [];
-        let altitude0, altitude1;
 
         // Helper function for converting local coordinates to lat/lng
         function localCoordinateToLatLng(x, y, viewBox) {
@@ -41,14 +45,6 @@
                 .then(svgText => {
                     const parser = new DOMParser();
                     const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
-
-                    // Get altitude from the SVG's data-altitude attribute
-                    const altitude = parseFloat(svgDoc.documentElement.getAttribute('data-altitude'));
-                    if (file === 'files/0.svg') {
-                        altitude0 = altitude; // Kat 0
-                    } else if (file === 'files/1.svg') {
-                        altitude1 = altitude; // Kat 1
-                    }
 
                     const doorsGroup = svgDoc.getElementById('Doors');
                     if (doorsGroup) {
@@ -124,10 +120,10 @@
 
             // Determine which floor the user is on based on altitude
             let linesArray;
-            if (altitude >= altitude0 && altitude < altitude1) {
+            if (altitude >= floorsAltitude[0] && altitude < floorsAltitude[1]) {
                 console.log("Kat 0'da");
                 linesArray = linesArray0;
-            } else if (altitude >= altitude1) {
+            } else if (altitude >= floorsAltitude[1]) {
                 console.log("Kat 1'de");
                 linesArray = linesArray1;
             } else {
@@ -178,6 +174,7 @@
         function showPopup(message, color) {
             let popup = L.popup().setLatLng(map.getCenter()).setContent(`<span style="color: ${color}">${message}</span>`).openOn(map);
         }
+
     </script>
 </body>
 
