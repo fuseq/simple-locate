@@ -18,11 +18,14 @@
     <div id="map"></div>
     <script>
         "use strict";
+
         const minLat = 40.9931327, maxLat = 40.9897231;
         const minLng = 29.0386154, maxLng = 29.0350682;
-        let linesArray = [];
+        let linesArray0 = [];
+        let linesArray1 = [];
+        let altitude0, altitude1;
 
-
+        // Helper function for converting local coordinates to lat/lng
         function localCoordinateToLatLng(x, y, viewBox) {
             const latDiff = maxLat - minLat;
             const lngDiff = maxLng - minLng;
@@ -31,32 +34,56 @@
             return new L.LatLng(maxLat - latLocalDiff, minLng + lngLocalDiff);
         }
 
-        fetch('files/0.svg')
-            .then(response => response.text())
-            .then(svgText => {
-                const parser = new DOMParser();
-                const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
-                const doorsGroup = svgDoc.getElementById('Doors');
-                if (doorsGroup) {
-                    const lines = doorsGroup.getElementsByTagName('line');
-                    const viewBox = svgDoc.documentElement.viewBox.baseVal;
-                    linesArray = [];
-                    Array.from(lines).forEach(line => {
-                        const id = line.id;
-                        const x1 = parseFloat(line.getAttribute('x1'));
-                        const y1 = parseFloat(line.getAttribute('y1'));
-                        const x2 = parseFloat(line.getAttribute('x2'));
-                        const y2 = parseFloat(line.getAttribute('y2'));
-                        const startLatLng = localCoordinateToLatLng(x1, y1, viewBox);
-                        const endLatLng = localCoordinateToLatLng(x2, y2, viewBox);
-                        // Ensure the correct format for lat/lng is saved
-                        linesArray.push({ id, start: { lat: startLatLng.lat, lng: startLatLng.lng }, end: { lat: endLatLng.lat, lng: endLatLng.lng } });
-                    });
-                    console.log('Doors:', linesArray); // Log the doors (lines) array
-                }
-            })
-            .catch(error => console.error('SVG yüklenirken hata:', error));
+        // Function to fetch SVG files and parse the doors
+        function fetchAndParseSVG(file) {
+            fetch(file)
+                .then(response => response.text())
+                .then(svgText => {
+                    const parser = new DOMParser();
+                    const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
 
+                    // Get altitude from the SVG's data-altitude attribute
+                    const altitude = parseFloat(svgDoc.documentElement.getAttribute('data-altitude'));
+                    if (file === 'files/0.svg') {
+                        altitude0 = altitude; // Kat 0
+                    } else if (file === 'files/1.svg') {
+                        altitude1 = altitude; // Kat 1
+                    }
+
+                    const doorsGroup = svgDoc.getElementById('Doors');
+                    if (doorsGroup) {
+                        const lines = doorsGroup.getElementsByTagName('line');
+                        const viewBox = svgDoc.documentElement.viewBox.baseVal;
+                        const linesArray = [];
+                        Array.from(lines).forEach(line => {
+                            const id = line.id;
+                            const x1 = parseFloat(line.getAttribute('x1'));
+                            const y1 = parseFloat(line.getAttribute('y1'));
+                            const x2 = parseFloat(line.getAttribute('x2'));
+                            const y2 = parseFloat(line.getAttribute('y2'));
+                            const startLatLng = localCoordinateToLatLng(x1, y1, viewBox);
+                            const endLatLng = localCoordinateToLatLng(x2, y2, viewBox);
+                            linesArray.push({
+                                id,
+                                start: { lat: startLatLng.lat, lng: startLatLng.lng },
+                                end: { lat: endLatLng.lat, lng: endLatLng.lng }
+                            });
+                        });
+                        if (file === 'files/0.svg') {
+                            linesArray0 = linesArray; // Kat 0
+                        } else if (file === 'files/1.svg') {
+                            linesArray1 = linesArray; // Kat 1
+                        }
+                    }
+                })
+                .catch(error => console.error('SVG yüklenirken hata:', error));
+        }
+
+        // Fetch the SVG files for both floors
+        fetchAndParseSVG('files/0.svg');
+        fetchAndParseSVG('files/1.svg');
+
+        // Map initialization
         const map = new L.Map("map", {
             center: [37.425930, 31.852214],
             zoom: 18,
@@ -74,44 +101,60 @@
                     function (position) {
                         let lat = position.coords.latitude;
                         let lng = position.coords.longitude;
+                        let altitude = position.coords.altitude;
                         console.log("Latitude:", lat);
                         console.log("Longitude:", lng);
-                        checkLocation(lat, lng);
+                        console.log("Altitude:", altitude); // Altitude bilgisini yazdırıyoruz
+                        checkLocation(lat, lng, altitude); // Konum ve altitude'u kontrol fonksiyonuna gönderiyoruz
                     },
                     function (error) {
                         console.error("Konum hatası:", error.message);
                         showPopup("Konum alınamadı", "red");
+                    },
+                    {
+                        enableHighAccuracy: true
                     }
                 );
             }
         }).addTo(map);
 
-        function showPopup(message, color) {
-            let popup = L.popup().setLatLng(map.getCenter()).setContent(`<span style="color: ${color}">${message}</span>`).openOn(map);
-        }
+        // Check location and find the closest door based on altitude
+        function checkLocation(lat, lng, altitude) {
+            console.log("Checking Location:", lat, lng, altitude); // Debugging the received coordinates and altitude
 
-        function checkLocation(lat, lng) {
-            console.log("Checking Location:", lat, lng); // Debugging the received coordinates
+            // Determine which floor the user is on based on altitude
+            let linesArray;
+            if (altitude >= altitude0 && altitude < altitude1) {
+                console.log("Kat 0'da");
+                linesArray = linesArray0;
+            } else if (altitude >= altitude1) {
+                console.log("Kat 1'de");
+                linesArray = linesArray1;
+            } else {
+                console.log("Dışarıda");
+                showPopup("❌ Dışarıda", "red");
+                return;
+            }
 
             // Log the boundary values for debugging
             console.log("Min Lat:", minLat, "Max Lat:", maxLat);
             console.log("Min Lng:", minLng, "Max Lng:", maxLng);
 
+            // Check if the user is inside the boundaries
             if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) {
                 console.log("❌ Dışarıda");
                 showPopup("❌ Dışarıda", "red");
             } else {
-                console.log("✅ İçeridesiniz"); // Debugging if inside
-                findClosestLine(lat, lng);
-
+                console.log("✅ İçeridesiniz");
+                findClosestLine(lat, lng, linesArray);
             }
         }
 
-        function findClosestLine(lat, lng) {
+        // Function to find the closest door
+        function findClosestLine(lat, lng, linesArray) {
             let closestLine = null;
             let minDistance = Infinity;
 
-            // Ensure line coordinates are compared correctly
             linesArray.forEach(line => {
                 const startDist = map.distance([lat, lng], [line.start.lat, line.start.lng]);
                 const endDist = map.distance([lat, lng], [line.end.lat, line.end.lng]);
@@ -129,6 +172,11 @@
             } else {
                 showPopup("Kapı Bulunamadı", "orange");
             }
+        }
+
+        // Function to show a popup
+        function showPopup(message, color) {
+            let popup = L.popup().setLatLng(map.getCenter()).setContent(`<span style="color: ${color}">${message}</span>`).openOn(map);
         }
     </script>
 </body>
