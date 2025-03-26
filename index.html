@@ -193,24 +193,23 @@ navigator.geolocation.watchPosition(updateUserPosition, console.error, {
 // Kullanıcı konumunu güncelleyen fonksiyon
 function updateUserPosition(position) {
     const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
-    const closestPoint = getClosestPointOnLine(userLatLng, polylineCoords);
+    const closestPointData = getClosestPointOnLine(userLatLng, polylineCoords);
+    const closestPoint = closestPointData.point;
     const distance = userLatLng.distanceTo(closestPoint);
 
-    // Önceki çizgiyi temizle
+    // Önceki çizgileri temizle
     if (userToLine) map.removeLayer(userToLine);
     if (traveledPolyline) map.removeLayer(traveledPolyline);
 
-    // Kullanıcı 5 metreden uzaksa, mavi çizgiyi çiz
-    if (distance > 5) {
-        userToLine = L.polyline([userLatLng, closestPoint], {
-            color: 'blue',
-            weight: 3,
-            dashArray: '5, 5'
-        }).addTo(map);
-    }
+    // Mavi çizgiyi güncelle (her zaman çizilecek!)
+    userToLine = L.polyline([userLatLng, closestPoint], {
+        color: 'blue',
+        weight: 3,
+        dashArray: '5, 5'
+    }).addTo(map);
 
     // Kullanıcı ilerledikçe yeşil renkle geçtiği yolları göster
-    updatePolylineColor(closestPoint);
+    updatePolylineColor(closestPointData);
 }
 
 // Çizginin en yakın noktasını bulan fonksiyon
