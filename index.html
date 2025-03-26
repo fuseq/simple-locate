@@ -126,7 +126,7 @@
             } else if (altitude >= floorsAltitude[1]) {
                 console.log("Kat 1'de");
                 linesArray = linesArray1;
-            } 
+            }
 
             // Log the boundary values for debugging
             console.log("Min Lat:", minLat, "Max Lat:", maxLat);
@@ -170,6 +170,65 @@
         function showPopup(message, color) {
             let popup = L.popup().setLatLng(map.getCenter()).setContent(`<span style="color: ${color}">${message}</span>`).openOn(map);
         }
+        // İki nokta arasına bir çizgi ekleme
+// Kullanıcının konumunu takip et
+navigator.geolocation.watchPosition(updateUserPosition, console.error, {
+    enableHighAccuracy: true
+});
+
+// Polyline'ı tanımla
+const polyline = L.polyline([
+    [37.426222, 31.851771],
+    [37.425696, 31.852072]
+], {
+    color: 'red',
+    weight: 4,
+    opacity: 0.8
+}).addTo(map);
+
+// Kullanıcının konumundan çizgiye en yakın noktaya çizgi çizmek için line tanımla
+let userToLine;
+
+// Kullanıcı konumunu güncelleyen fonksiyon
+function updateUserPosition(position) {
+    const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
+
+    // En yakın noktayı hesapla
+    const closestPoint = getClosestPoint(userLatLng, polyline.getLatLngs());
+
+    // Kullanıcıyla en yakın nokta arasındaki mesafeyi hesapla
+    const distance = userLatLng.distanceTo(closestPoint);
+
+    // Eğer eski çizgi varsa kaldır
+    if (userToLine) {
+        map.removeLayer(userToLine);
+    }
+
+    // Kullanıcı 5 metreden uzaksa yeni çizgiyi ekle, yoksa kaldır
+    if (distance > 5) {
+        userToLine = L.polyline([userLatLng, closestPoint], {
+            color: 'blue',
+            weight: 2,
+            dashArray: '5, 5'
+        }).addTo(map);
+    }
+}
+
+// Bir noktalar dizisi içinde en yakın noktayı bulan fonksiyon
+function getClosestPoint(userLatLng, latLngs) {
+    let closestPoint = null;
+    let closestDistance = Infinity;
+
+    latLngs.forEach((point) => {
+        const distance = userLatLng.distanceTo(point);
+        if (distance < closestDistance) {
+            closestDistance = distance;
+            closestPoint = point;
+        }
+    });
+
+    return closestPoint;
+}
 
     </script>
 </body>
