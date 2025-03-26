@@ -170,65 +170,106 @@
         function showPopup(message, color) {
             let popup = L.popup().setLatLng(map.getCenter()).setContent(`<span style="color: ${color}">${message}</span>`).openOn(map);
         }
-        // İki nokta arasına bir çizgi ekleme
-// Kullanıcının konumunu takip et
-navigator.geolocation.watchPosition(updateUserPosition, console.error, {
-    enableHighAccuracy: true
-});
+        const polylineCoords = [
+            [37.426222, 31.851771],
+            [37.425959, 31.851921],
+            [37.425696, 31.852072]
+        ];
 
-// Polyline'ı tanımla
-const polyline = L.polyline([
-    [37.426222, 31.851771],
-    [37.425696, 31.852072]
-], {
-    color: 'red',
-    weight: 4,
-    opacity: 0.8
-}).addTo(map);
-
-// Kullanıcının konumundan çizgiye en yakın noktaya çizgi çizmek için line tanımla
-let userToLine;
-
-// Kullanıcı konumunu güncelleyen fonksiyon
-function updateUserPosition(position) {
-    const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
-
-    // En yakın noktayı hesapla
-    const closestPoint = getClosestPoint(userLatLng, polyline.getLatLngs());
-
-    // Kullanıcıyla en yakın nokta arasındaki mesafeyi hesapla
-    const distance = userLatLng.distanceTo(closestPoint);
-
-    // Eğer eski çizgi varsa kaldır
-    if (userToLine) {
-        map.removeLayer(userToLine);
-    }
-
-    // Kullanıcı 5 metreden uzaksa yeni çizgiyi ekle, yoksa kaldır
-    if (distance > 5) {
-        userToLine = L.polyline([userLatLng, closestPoint], {
-            color: 'blue',
-            weight: 2,
-            dashArray: '5, 5'
+        let polyline = L.polyline(polylineCoords, {
+            color: 'red',
+            weight: 6,
+            opacity: 0.8
         }).addTo(map);
-    }
-}
 
-// Bir noktalar dizisi içinde en yakın noktayı bulan fonksiyon
-function getClosestPoint(userLatLng, latLngs) {
-    let closestPoint = null;
-    let closestDistance = Infinity;
+        let userToLine;
 
-    latLngs.forEach((point) => {
-        const distance = userLatLng.distanceTo(point);
-        if (distance < closestDistance) {
-            closestDistance = distance;
-            closestPoint = point;
+        // Kullanıcı konumunu sürekli takip et
+        navigator.geolocation.watchPosition(updateUserPosition, console.error, {
+            enableHighAccuracy: true
+        });
+
+        // Kullanıcı konumunu güncelleyen fonksiyon
+        function updateUserPosition(position) {
+            const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
+            const closestPoint = getClosestPointOnLine(userLatLng, polylineCoords);
+            const distance = userLatLng.distanceTo(closestPoint);
+
+            // Önceki çizgiyi temizle
+            if (userToLine) {
+                map.removeLayer(userToLine);
+            }
+
+            // Kullanıcı 5 metreden uzaksa, mavi çizgiyi çiz
+            if (distance > 5) {
+                userToLine = L.polyline([userLatLng, closestPoint], {
+                    color: 'blue',
+                    weight: 3,
+                    dashArray: '5, 5'
+                }).addTo(map);
+            }
+
+            // Kullanıcı ilerledikçe çizginin bir kısmını renklendir
+            updatePolylineColor(closestPoint);
         }
-    });
 
-    return closestPoint;
-}
+        // Polyline üzerindeki en yakın noktayı bulan fonksiyon
+        function getClosestPointOnLine(userLatLng, polylineCoords) {
+            let closestPoint = null;
+            let closestDistance = Infinity;
+
+            for (let i = 0; i < polylineCoords.length - 1; i++) {
+                const segmentStart = L.latLng(polylineCoords[i]);
+                const segmentEnd = L.latLng(polylineCoords[i + 1]);
+
+                const projectedPoint = projectPointOnSegment(userLatLng, segmentStart, segmentEnd);
+                const distance = userLatLng.distanceTo(projectedPoint);
+
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestPoint = projectedPoint;
+                }
+            }
+            return closestPoint;
+        }
+
+        // Çizginin opaklığını dinamik olarak değiştiren fonksiyon
+        function updatePolylineColor(closestPoint) {
+            const newCoords = polylineCoords.map(coord => {
+                const point = L.latLng(coord);
+                const distance = point.distanceTo(closestPoint);
+
+                // Kullanıcıya yakın noktalar yeşile dönüşsün, uzak noktalar kalsın
+                return {
+                    lat: coord[0],
+                    lng: coord[1],
+                    color: distance < 5 ? 'green' : 'red'
+                };
+            });
+
+            // Yeni polyline oluştur
+            map.removeLayer(polyline);
+            polyline = L.polyline(newCoords.map(p => [p.lat, p.lng]), {
+                color: (latlng) => latlng.color, // Renk geçişi otomatik
+                weight: 6,
+                opacity: 0.8
+            }).addTo(map);
+        }
+
+        // Bir noktayı en yakın çizgi segmentine projekte eden fonksiyon
+        function projectPointOnSegment(userLatLng, segmentStart, segmentEnd) {
+            const A = [segmentStart.lng, segmentStart.lat];
+            const B = [segmentEnd.lng, segmentEnd.lat];
+            const P = [userLatLng.lng, userLatLng.lat];
+
+            const AB = [B[0] - A[0], B[1] - A[1]];
+            const AP = [P[0] - A[0], P[1] - A[1]];
+            const AB_AP = AB[0] * AP[0] + AB[1] * AP[1];
+            const AB_AB = AB[0] * AB[0] + AB[1] * AB[1];
+            const t = Math.max(0, Math.min(1, AB_AP / AB_AB));
+
+            return L.latLng(A[1] + AB[1] * t, A[0] + AB[0] * t);
+        }
 
     </script>
 </body>
