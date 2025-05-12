@@ -1,8 +1,9 @@
 const polylineCoords = [
-    [37.426222, 31.851771],
-    [37.425959, 31.851921],
-    [37.425696, 31.852072]
+    [37.425947, 31.852208],
+    [37.425855, 31.852246],
+
 ];
+
 
 let fullPolyline = L.polyline(polylineCoords, {
     color: 'red',
