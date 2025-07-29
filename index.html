@@ -91,13 +91,6 @@
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
-        // Son geçerli konum bilgilerini saklayacak değişkenler
-        let lastValidLat = null;
-        let lastValidLng = null;
-        let lastValidAccuracy = null;
-        let isLocationJumping = false;
-        const JUMP_THRESHOLD = 20; // Sıçrama olarak kabul edilecek mesafe (metre)
-        
         const control = new L.Control.SimpleLocate({
             position: "topleft",
             afterDeviceMove: (location) => {
@@ -110,45 +103,6 @@
                 console.log("Latitude:", lat);
                 console.log("Longitude:", lng);
                 console.log("Accuracy:", accuracy);
-                
-                // Sıçrama kontrolü - ilk konumda veya henüz geçerli konum yoksa atla
-                if (lastValidLat !== null && lastValidLng !== null) {
-                    // İki konum arası mesafeyi hesapla
-                    const distance = calculateDistance(lastValidLat, lastValidLng, lat, lng);
-                    console.log("Distance from last valid position:", distance);
-                    
-                    // Ani sıçrama tespiti
-                    if (distance > JUMP_THRESHOLD) {
-                        console.log("Konum sıçraması tespit edildi:", distance);
-                        isLocationJumping = true;
-                        showPopup("Konum sinyali zayıf", "orange");
-                        
-                        // Marker rengini gri yap
-                        updateMarkerColor("low-accuracy");
-                        
-                        // Son geçerli konumu kullan
-                        lat = lastValidLat;
-                        lng = lastValidLng;
-                        accuracy = lastValidAccuracy;
-                    } else {
-                        // Geçerli konum - sıçrama durumundan çıkıldıysa gösterge rengini normale çevir
-                        if (isLocationJumping) {
-                            isLocationJumping = false;
-                            updateMarkerColor("normal");
-                            showPopup("Konum sinyali iyi", "green");
-                        }
-                        
-                        // Geçerli konumu kaydet
-                        lastValidLat = lat;
-                        lastValidLng = lng;
-                        lastValidAccuracy = accuracy;
-                    }
-                } else {
-                    // İlk konum verisi - geçerli olarak kabul et
-                    lastValidLat = lat;
-                    lastValidLng = lng;
-                    lastValidAccuracy = accuracy;
-                }
                 
                 // altitude bilgisi SimpleLocate'den doğrudan gelmiyor, 
                 // yaklaşık bir değer belirleyebiliriz (floorsAltitude değerlerine göre)
@@ -175,51 +129,9 @@
                 console.log("Orientation status:", status.orientation);
                 if (!status.geolocation) {
                     showPopup("Konum alınamadı", "red");
-                } else {
-                    showPopup("Konum takip ediliyor", "green");
                 }
             }
         }).addTo(map);
-        
-        // Konum doğruluk durumuna göre göstergeleri güncelle
-        function updateMarkerColor(status) {
-            const markerElement = document.querySelector('.leaflet-simple-locate-icon');
-            const circleElement = document.querySelector('.leaflet-simple-locate-circle');
-            
-            if (markerElement) {
-                if (status === "low-accuracy") {
-                    // Düşük doğrulukta marker'ı gizle
-                    markerElement.style.display = 'none';
-                } else {
-                    // Normal durumda marker'ı göster
-                    markerElement.style.display = '';
-                }
-            }
-            
-            if (circleElement) {
-                if (status === "low-accuracy") {
-                    circleElement.classList.add('leaflet-simple-locate-circle-low-accuracy');
-                } else {
-                    circleElement.classList.remove('leaflet-simple-locate-circle-low-accuracy');
-                }
-            }
-        }
-        
-        // İki nokta arasındaki mesafeyi hesaplayan fonksiyon (Haversine formülü)
-        function calculateDistance(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; // metre cinsinden dünya yarıçapı
-            const φ1 = lat1 * Math.PI/180;
-            const φ2 = lat2 * Math.PI/180;
-            const Δφ = (lat2-lat1) * Math.PI/180;
-            const Δλ = (lon2-lon1) * Math.PI/180;
-
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-                    Math.cos(φ1) * Math.cos(φ2) *
-                    Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-
-            return R * c; // metre cinsinden mesafe
-        }
 
         // Check location and find the closest door based on altitude
         function checkLocation(lat, lng, altitude) {
