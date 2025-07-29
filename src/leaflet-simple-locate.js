@@ -431,7 +431,7 @@
             if (!this._latitude || !this._longitude || (this.options.drawCircle && !this._accuracy)) return;
 
             // Doğruluk düşükse sınıf ekleme için değişken
-            const isLowAccuracy = this._accuracy > 5; // 50 metreden fazla accuracy düşük olarak kabul edilir
+            const isLowAccuracy = this._accuracy > 50; // 50 metreden fazla accuracy düşük olarak kabul edilir
 
             let icon_name;
             if (this._geolocation && this._orientation && this._angle) icon_name = "iconOrientation";
