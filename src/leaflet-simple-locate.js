@@ -472,7 +472,9 @@
                 if (this._marker) this._map.removeLayer(this._marker);
 
                 // İkon oluşturulurken doğruluğa göre sınıf ekleme
-                const iconOptions = this.options[icon_name];
+                const iconOptions = { ...this.options[icon_name] }; // Orijinal objeyi klonla
+                iconOptions.className = this.options[icon_name].className; // Sınıf ismini al
+
                 if (isLowAccuracy) {
                     if (!iconOptions.className.includes("low-accuracy")) {
                         iconOptions.className += " leaflet-simple-locate-icon-low-accuracy";
@@ -482,7 +484,7 @@
                 }
 
                 this._marker = L.marker([this._latitude, this._longitude], {
-                    icon: iconOptions,
+                    icon: L.divIcon(iconOptions),
                 });
                 this._marker.icon_name = icon_name;
                 this._marker.addTo(this._map);

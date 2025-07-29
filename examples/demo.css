@@ -126,22 +126,15 @@
     cursor: pointer;
 }
 
-
 .leaflet-simple-locate-icon-low-accuracy svg circle {
-    fill: #999999 !important; 
+    fill: #999999 !important; /* Gri renk */
 }
 
 .leaflet-simple-locate-icon-low-accuracy svg path {
-    fill: #999999 !important; 
+    fill: #999999 !important; /* Gri renk */
 }
 
 .leaflet-simple-locate-circle-low-accuracy {
-    stroke: #999999 !important; 
-    fill: rgba(153, 153, 153, 0.2) !important; 
-}
-
-
-.leaflet-simple-locate-icon-low-accuracy svg g animateTransform {
-    values: "0;0;45;45;90;90;135;135;180;180;225;225;270;270;315;315;360" !important;
-    keyTimes: "0;.125;.125;.25;.25;.375;.375;.5;.5;.675;.675;.75;.75;.875;.875;1;1" !important;
+    stroke: #999999 !important; /* Gri kenar */
+    fill: rgba(153, 153, 153, 0.2) !important; /* Gri dolgu */
 }

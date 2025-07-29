@@ -103,39 +103,62 @@ function fetchAndParseSVG(file) {
         .catch(error => console.error('SVG yüklenirken hata:', error));
 }
 
+function processLocation(lat, lng, accuracy, altitude) {
+    // Optimize edilmiş konum bilgilerini işle
+    const optimizedLocation = optimizeLocation(lat, lng, accuracy, altitude);
+    if (optimizedLocation) {
+        console.log("Latitude:", optimizedLocation.lat);
+        console.log("Longitude:", optimizedLocation.lng);
+        console.log("Altitude:", optimizedLocation.altitude);
+        console.log("Accuracy:", optimizedLocation.accuracy);
+        
+        // Optimizasyon sonrası işlemler
+        updateUserPosition(optimizedLocation);
+        checkLocation(optimizedLocation.lat, optimizedLocation.lng, optimizedLocation.altitude);
+    }
+}
+let lowAccuracyWarningShown = false;
 
 function initializeLocationTracking() {
-    
+    // SimpleLocate control'ü oluştur
     locateControl = new L.Control.SimpleLocate({
         position: "topleft",
-        setViewAfterClick: false,  
+        setViewAfterClick: false,  // Görünümü otomatik değiştirmiyoruz
         drawCircle: true,
         afterDeviceMove: (event) => {
-            
+            // SimpleLocate'den gelen konum verileri (artık altitude dahil)
             let lat = event.lat;
             let lng = event.lng;
             let accuracy = event.accuracy;
-            let altitude = event.altitude; 
+            let altitude = event.altitude; // Artık doğrudan buradan alabiliriz
             
-          
-            const optimizedLocation = optimizeLocation(lat, lng, accuracy, altitude);
-            if (optimizedLocation) {
-                console.log("Latitude:", optimizedLocation.lat);
-                console.log("Longitude:", optimizedLocation.lng);
-                console.log("Altitude:", optimizedLocation.altitude);
-                console.log("Accuracy:", optimizedLocation.accuracy);
+            // Altitude bilgisi yoksa (bazı cihazlar sağlamayabilir)
+            // navigator.geolocation'dan tekrar deneyelim
+            if (altitude === undefined || altitude === null) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        altitude = position.coords.altitude;
+                        processLocation(lat, lng, accuracy, altitude);
+                    },
+                    function(error) {
+                        console.error("Altitude bilgisi alınamadı:", error.message);
+                        processLocation(lat, lng, accuracy, null);
+                    },
+                    { enableHighAccuracy: true, maximumAge: 0 }
+                );
+            } else {
+                processLocation(lat, lng, accuracy, altitude);
+            }
+            
+            // Düşük doğruluk uyarısı göster
+            if (accuracy > 50 && !lowAccuracyWarningShown) {
+                showPopup("Uyarı: Konum doğruluğu düşük, daha doğru sonuçlar için açık alanda olduğunuzdan emin olun.", "orange");
+                lowAccuracyWarningShown = true;
                 
-               
-                updateUserPosition(optimizedLocation);
-                checkLocation(optimizedLocation.lat, optimizedLocation.lng, optimizedLocation.altitude);
-                
-               
-                if (optimizedLocation.accuracy > 50 && !lowAccuracyWarningShown) {
-                    showPopup("Uyarı: Konum doğruluğu düşük, daha doğru sonuçlar için açık alanda olduğunuzdan emin olun.", "orange");
-                    lowAccuracyWarningShown = true;
-                } else if (optimizedLocation.accuracy <= 50) {
+                // 10 saniye sonra uyarıyı sıfırla
+                setTimeout(() => {
                     lowAccuracyWarningShown = false;
-                }
+                }, 10000);
             }
         }
     }).addTo(map);
@@ -143,17 +166,10 @@ function initializeLocationTracking() {
     return locateControl;
 }
 
-// Düşük doğruluk uyarısı için değişken
-let lowAccuracyWarningShown = false;
+
 
 // Konum optimizasyonu için fonksiyon
 function optimizeLocation(lat, lng, accuracy, altitude) {
-    // Doğruluk kontrolü - çok düşük doğruluklu konumları reddet
-    if (accuracy > 100) {
-        console.log("Düşük doğruluk nedeniyle konum reddedildi:", accuracy);
-        return null;
-    }
-    
     // Yeni konum objesi
     const newPosition = {
         lat: lat,
@@ -179,8 +195,10 @@ function optimizeLocation(lat, lng, accuracy, altitude) {
     
     // Hız çok yüksekse ve bu ani bir sıçrama ise
     if (speed > MAX_SPEED && distance > 5) {
-        console.log("Yüksek hız nedeniyle konum reddedildi:", speed.toFixed(2), "m/s");
-        return null;
+        console.log("Yüksek hız nedeniyle konum filtrelenecek:", speed.toFixed(2), "m/s");
+        // Konumu reddetmek yerine, son konumu kullanarak hafifçe filtreleme yapalım
+        newPosition.lat = lastPos.lat + (newPosition.lat - lastPos.lat) * 0.3;
+        newPosition.lng = lastPos.lng + (newPosition.lng - lastPos.lng) * 0.3;
     }
     
     // Konum geçerli, son konumlar listesine ekle
