@@ -149,6 +149,7 @@
             this._longitude = undefined;
             this._accuracy = undefined;
             this._angle = undefined;
+            this._altitude = undefined;
         },
 
         onAdd: function (map) {
@@ -340,6 +341,7 @@
             this._latitude = event.latitude;
             this._longitude = event.longitude;
             this._accuracy = event.accuracy;
+            this._altitude = event.altitude; // Altitude bilgisini de saklayalım
             this._updateMarker();
         },
 
@@ -423,9 +425,13 @@
                 lng: this._longitude,
                 accuracy: this._accuracy,
                 angle: this._angle,
+                altitude: this._altitude // Altitude bilgisini de callback'e ekleyelim
             });
 
             if (!this._latitude || !this._longitude || (this.options.drawCircle && !this._accuracy)) return;
+
+            // Doğruluk düşükse sınıf ekleme için değişken
+            const isLowAccuracy = this._accuracy > 5; // 50 metreden fazla accuracy düşük olarak kabul edilir
 
             let icon_name;
             if (this._geolocation && this._orientation && this._angle) icon_name = "iconOrientation";
@@ -435,19 +441,48 @@
             if (this._circle) {
                 this._circle.setLatLng([this._latitude, this._longitude]);
                 this._circle.setRadius(this._accuracy);
-            } else if (this.options.drawCircle)
+
+                // Doğruluk düşükse circle'a özel sınıf ekle
+                if (isLowAccuracy) {
+                    L.DomUtil.addClass(this._circle._path, "leaflet-simple-locate-circle-low-accuracy");
+                } else {
+                    L.DomUtil.removeClass(this._circle._path, "leaflet-simple-locate-circle-low-accuracy");
+                }
+            } else if (this.options.drawCircle) {
                 this._circle = L.circle([this._latitude, this._longitude], {
-                    className: "leaflet-simple-locate-circle",
+                    className: "leaflet-simple-locate-circle" + (isLowAccuracy ? " leaflet-simple-locate-circle-low-accuracy" : ""),
                     radius: this._accuracy,
                 }).addTo(this._map);
+            }
 
-            if (this._marker && this._marker.icon_name === icon_name)
+            if (this._marker && this._marker.icon_name === icon_name) {
                 this._marker.setLatLng([this._latitude, this._longitude]);
-            else {
+
+                // Doğruluk düşükse marker'a özel sınıf ekle/çıkar
+                const markerElement = this._marker.getElement();
+                if (markerElement) {
+                    if (isLowAccuracy) {
+                        L.DomUtil.addClass(markerElement, "leaflet-simple-locate-icon-low-accuracy");
+                    } else {
+                        L.DomUtil.removeClass(markerElement, "leaflet-simple-locate-icon-low-accuracy");
+                    }
+                }
+            } else {
                 // console.log("_updateMarker", new Date().toISOString(), this._marker ? this._marker.icon_name : "undefined", icon_name);
                 if (this._marker) this._map.removeLayer(this._marker);
+
+                // İkon oluşturulurken doğruluğa göre sınıf ekleme
+                const iconOptions = this.options[icon_name];
+                if (isLowAccuracy) {
+                    if (!iconOptions.className.includes("low-accuracy")) {
+                        iconOptions.className += " leaflet-simple-locate-icon-low-accuracy";
+                    }
+                } else {
+                    iconOptions.className = iconOptions.className.replace(" leaflet-simple-locate-icon-low-accuracy", "");
+                }
+
                 this._marker = L.marker([this._latitude, this._longitude], {
-                    icon: this.options[icon_name],
+                    icon: iconOptions,
                 });
                 this._marker.icon_name = icon_name;
                 this._marker.addTo(this._map);

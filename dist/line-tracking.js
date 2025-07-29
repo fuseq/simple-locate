@@ -103,53 +103,48 @@ function fetchAndParseSVG(file) {
         .catch(error => console.error('SVG yüklenirken hata:', error));
 }
 
-// SimpleLocate eklentisinin konfigürasyonu
+
 function initializeLocationTracking() {
-    // SimpleLocate control'ü oluştur
+    
     locateControl = new L.Control.SimpleLocate({
         position: "topleft",
-        setViewAfterClick: false,  // Görünümü otomatik değiştirmiyoruz
+        setViewAfterClick: false,  
         drawCircle: true,
         afterDeviceMove: (event) => {
-            // SimpleLocate'den gelen konum verileri
+            
             let lat = event.lat;
             let lng = event.lng;
             let accuracy = event.accuracy;
+            let altitude = event.altitude; 
             
-            // Altitude bilgisi için navigator.geolocation kullanmamız gerekiyor
-            navigator.geolocation.getCurrentPosition(
-                function(position) {
-                    let altitude = position.coords.altitude;
-                    
-                    // Optimize edilmiş konum bilgilerini işle
-                    const optimizedLocation = optimizeLocation(lat, lng, accuracy, altitude);
-                    if (optimizedLocation) {
-                        console.log("Latitude:", optimizedLocation.lat);
-                        console.log("Longitude:", optimizedLocation.lng);
-                        console.log("Altitude:", optimizedLocation.altitude);
-                        console.log("Accuracy:", optimizedLocation.accuracy);
-                        
-                        // Optimizasyon sonrası işlemler
-                        updateUserPosition(optimizedLocation);
-                        checkLocation(optimizedLocation.lat, optimizedLocation.lng, optimizedLocation.altitude);
-                    }
-                },
-                function(error) {
-                    console.error("Altitude bilgisi alınamadı:", error.message);
-                    // Altitude bilgisi olmadan devam ediyoruz
-                    const optimizedLocation = optimizeLocation(lat, lng, accuracy, null);
-                    if (optimizedLocation) {
-                        updateUserPosition(optimizedLocation);
-                        checkLocation(optimizedLocation.lat, optimizedLocation.lng, null);
-                    }
-                },
-                { enableHighAccuracy: true, maximumAge: 0 }
-            );
+          
+            const optimizedLocation = optimizeLocation(lat, lng, accuracy, altitude);
+            if (optimizedLocation) {
+                console.log("Latitude:", optimizedLocation.lat);
+                console.log("Longitude:", optimizedLocation.lng);
+                console.log("Altitude:", optimizedLocation.altitude);
+                console.log("Accuracy:", optimizedLocation.accuracy);
+                
+               
+                updateUserPosition(optimizedLocation);
+                checkLocation(optimizedLocation.lat, optimizedLocation.lng, optimizedLocation.altitude);
+                
+               
+                if (optimizedLocation.accuracy > 50 && !lowAccuracyWarningShown) {
+                    showPopup("Uyarı: Konum doğruluğu düşük, daha doğru sonuçlar için açık alanda olduğunuzdan emin olun.", "orange");
+                    lowAccuracyWarningShown = true;
+                } else if (optimizedLocation.accuracy <= 50) {
+                    lowAccuracyWarningShown = false;
+                }
+            }
         }
     }).addTo(map);
 
     return locateControl;
 }
+
+// Düşük doğruluk uyarısı için değişken
+let lowAccuracyWarningShown = false;
 
 // Konum optimizasyonu için fonksiyon
 function optimizeLocation(lat, lng, accuracy, altitude) {
