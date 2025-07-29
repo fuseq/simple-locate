@@ -96,7 +96,7 @@
         let lastValidLng = null;
         let lastValidAccuracy = null;
         let isLocationJumping = false;
-        const JUMP_THRESHOLD = 5; // Sıçrama olarak kabul edilecek mesafe (metre)
+        const JUMP_THRESHOLD = 10; // Sıçrama olarak kabul edilecek mesafe (metre)
         
         const control = new L.Control.SimpleLocate({
             position: "topleft",
@@ -181,24 +181,26 @@
             }
         }).addTo(map);
         
-        // Marker rengini düşük doğruluk/normal durumlarına göre değiştir
+        // Konum doğruluk durumuna göre göstergeleri güncelle
         function updateMarkerColor(status) {
-            const marker = document.querySelector('.leaflet-simple-locate-icon');
-            const circle = document.querySelector('.leaflet-simple-locate-circle');
+            const markerElement = document.querySelector('.leaflet-simple-locate-icon');
+            const circleElement = document.querySelector('.leaflet-simple-locate-circle');
             
-            if (marker) {
+            if (markerElement) {
                 if (status === "low-accuracy") {
-                    marker.classList.add('leaflet-simple-locate-icon-low-accuracy');
+                    // Düşük doğrulukta marker'ı gizle
+                    markerElement.style.display = 'none';
                 } else {
-                    marker.classList.remove('leaflet-simple-locate-icon-low-accuracy');
+                    // Normal durumda marker'ı göster
+                    markerElement.style.display = '';
                 }
             }
             
-            if (circle) {
+            if (circleElement) {
                 if (status === "low-accuracy") {
-                    circle.classList.add('leaflet-simple-locate-circle-low-accuracy');
+                    circleElement.classList.add('leaflet-simple-locate-circle-low-accuracy');
                 } else {
-                    circle.classList.remove('leaflet-simple-locate-circle-low-accuracy');
+                    circleElement.classList.remove('leaflet-simple-locate-circle-low-accuracy');
                 }
             }
         }

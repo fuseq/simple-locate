@@ -128,15 +128,16 @@
 
 
 
-.leaflet-simple-locate-icon-low-accuracy svg circle {
-    fill: #999999 !important; /* Gri renk */
-}
-
-.leaflet-simple-locate-icon-low-accuracy svg path {
-    fill: #999999 !important; /* Gri renk */
-}
-
 .leaflet-simple-locate-circle-low-accuracy {
-    stroke: #999999 !important; /* Gri kenar */
-    fill: rgba(153, 153, 153, 0.2) !important; /* Gri dolgu */
+    stroke: #ff6666 !important; /* Kırmızı kenar */
+    fill: rgba(255, 102, 102, 0.2) !important; /* Kırmızı dolgu */
+    stroke-width: 2px !important; /* Daha kalın kenar */
+    stroke-dasharray: 5, 5 !important; /* Kesikli çizgi */
+    animation: pulse-circle 2s infinite; /* Yanıp sönme animasyonu */
+}
+
+@keyframes pulse-circle {
+    0% { opacity: 0.7; }
+    50% { opacity: 0.3; }
+    100% { opacity: 0.7; }
 }
