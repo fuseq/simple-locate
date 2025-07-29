@@ -99,32 +99,34 @@
             maxSpeedThreshold: 20,         // 20 m/s'den hızlı konum değişimlerini filtrele (72 km/saat)
             historySize: 5,                // Son 5 konumu geçmişte tut
             distanceThreshold: 30,         // 30 metreden büyük ani değişimleri filtrele
-            useWeightedAverage: true,      // Ağırlıklı ortalama filtreleme kullan
-            useKalmanFilter: false,        // Kalman filtresi kullanma (daha ağır işlem yükü)
+            useWeightedAverage: false,      // Ağırlıklı ortalama filtreleme kullan
+            useKalmanFilter: true,      // Kalman filtresini aç
+            kalmanProcessNoise: 0.01,   // Proses gürültüsü (düşük değer = daha fazla pürüzsüzlük)
+            kalmanMeasurementNoise: 10,  // Ölçüm gürültüsü (yüksek değer = GPS verilerine daha az güven)
             debugMode: false,              // Hata ayıklama modu (konsola log yazdırma)
-            
+
             afterDeviceMove: (location) => {
                 // Bu fonksiyon, konum her değiştiğinde çağrılır
                 let lat = location.lat;
                 let lng = location.lng;
                 let accuracy = location.accuracy; // Konum doğruluğu
                 let angle = location.angle; // Cihaz yönü (varsa)
-                
+
                 console.log("Latitude:", lat);
                 console.log("Longitude:", lng);
                 console.log("Accuracy:", accuracy);
-                
+
                 // Konum doğruluğu çok düşükse kullanıcıya bildir
                 if (accuracy > 50) {
                     showPopup("Düşük GPS doğruluğu: " + Math.round(accuracy) + "m", "orange");
                 }
-                
+
                 // altitude bilgisi SimpleLocate'den doğrudan gelmiyor, 
                 // yaklaşık bir değer belirleyebiliriz (floorsAltitude değerlerine göre)
                 let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
-                
+
                 checkLocation(lat, lng, altitude);
-                
+
                 // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
                 if (typeof updateUserPosition === 'function') {
                     // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
@@ -149,7 +151,7 @@
                 }
             }
         }).addTo(map);
-        
+
         // Konum filtreleme kalitesini değiştirmek için özel fonksiyon
         function updateLocationFiltering(highQuality = true) {
             if (highQuality) {
