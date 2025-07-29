@@ -126,6 +126,8 @@
     cursor: pointer;
 }
 
+
+
 .leaflet-simple-locate-icon-low-accuracy svg circle {
     fill: #999999 !important; /* Gri renk */
 }
