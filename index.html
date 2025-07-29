@@ -8,12 +8,6 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="dist/leaflet-simple-locate.min.js"></script>
-    
-    <!-- Geodesy - Hassas coğrafi hesaplamalar için -->
-    <script src="https://unpkg.com/leaflet-geodesy@0.2.1/leaflet-geodesy.js"></script>
-    
-    <!-- KalmanFilter - GPS verilerini filtrelemek için -->
-    <script src="https://unpkg.com/kalmanjs@1.1.0/dist/kalman.min.js"></script>
 
 
     <link rel="stylesheet" href="examples/demo.css" />
@@ -23,15 +17,6 @@
 
 <body>
     <div id="map"></div>
-    <div id="controls">
-        <button id="debugButton" onclick="toggleDebugMode()">Hata Ayıklama Modu</button>
-        <button id="clearButton" onclick="clearLocationHistory()">Geçmişi Temizle</button>
-        <select id="filterMode" onchange="updateFilterMode(this.value)">
-            <option value="normal">Normal Filtreleme</option>
-            <option value="strong">Güçlü Filtreleme</option>
-            <option value="light">Hafif Filtreleme</option>
-        </select>
-    </div>
     <script>
         "use strict";
 
@@ -44,26 +29,6 @@
         const minLng = 31.8511658, maxLng = 31.8533658;
         let linesArray0 = [];
         let linesArray1 = [];
-        
-        // Gelişmiş konum takibi için değişkenler
-        let lastValidLocation = null;
-        let locationHistory = []; // Son konumları saklamak için
-        const MAX_HISTORY_LENGTH = 10; // Geçmişte saklanacak maksimum konum sayısı
-        const JUMP_THRESHOLD = 50; // Metre cinsinden sıçrama eşiği
-        
-        // Kalman filtreleri - enlem, boylam ve hız için ayrı filtreler
-        const kalmanLat = new KalmanFilter({R: 0.1, Q: 1}); // R: ölçüm gürültüsü, Q: proses gürültüsü
-        const kalmanLng = new KalmanFilter({R: 0.1, Q: 1});
-        const kalmanSpeed = new KalmanFilter({R: 0.5, Q: 0.5});
-        
-        // Son iki konum arası hız (m/s) - Aşırı hızları filtrelemek için kullanılacak
-        let lastSpeed = 0;
-        let lastUpdateTime = null;
-        
-        // Harita üzerinde hata ayıklama için polyline
-        let rawLocationsLine = null;
-        let filteredLocationsLine = null;
-        let isDebugMode = false; // Hata ayıklama modunu açıp kapatmak için
 
         // Helper function for converting local coordinates to lat/lng
         function localCoordinateToLatLng(x, y, viewBox) {
@@ -126,56 +91,33 @@
             attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
-        // Gelişmiş konum takibi için SimpleLocate kontrolü
         const control = new L.Control.SimpleLocate({
             position: "topleft",
             afterDeviceMove: (location) => {
-                // Ham konum verileri
-                let rawLat = location.lat;
-                let rawLng = location.lng;
-                let accuracy = location.accuracy;
-                let angle = location.angle;
+                // Bu fonksiyon, konum her değiştiğinde çağrılır
+                let lat = location.lat;
+                let lng = location.lng;
+                let accuracy = location.accuracy; // Konum doğruluğu
+                let angle = location.angle; // Cihaz yönü (varsa)
                 
-                console.log("Ham konum:", rawLat, rawLng, "Doğruluk:", accuracy);
+                console.log("Latitude:", lat);
+                console.log("Longitude:", lng);
+                console.log("Accuracy:", accuracy);
                 
-                // Ham konum noktasını hata ayıklama için sakla
-                if (isDebugMode) {
-                    addRawLocationPoint(rawLat, rawLng);
-                }
-                
-                // Yeni konum verisini işle ve filtrelenmiş konumu al
-                const filteredLocation = processNewLocation({
-                    lat: rawLat,
-                    lng: rawLng,
-                    accuracy: accuracy,
-                    angle: angle,
-                    timestamp: Date.now()
-                });
-                
-                // Filtrelenmiş konumu kullan
-                let lat = filteredLocation.lat;
-                let lng = filteredLocation.lng;
-                
-                console.log("Filtrelenmiş konum:", lat, lng);
-                
-                // Filtrelenmiş konum noktasını hata ayıklama için sakla
-                if (isDebugMode) {
-                    addFilteredLocationPoint(lat, lng);
-                }
-                
-                // altitude bilgisi SimpleLocate'den doğrudan gelmiyor
+                // altitude bilgisi SimpleLocate'den doğrudan gelmiyor, 
+                // yaklaşık bir değer belirleyebiliriz (floorsAltitude değerlerine göre)
                 let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
                 
-                // Konum kontrolü yap
                 checkLocation(lat, lng, altitude);
                 
-                // Line tracking fonksiyonunu çağır
+                // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
                 if (typeof updateUserPosition === 'function') {
+                    // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
                     const mockPosition = {
                         coords: {
                             latitude: lat,
                             longitude: lng,
-                            accuracy: filteredLocation.accuracy || accuracy,
+                            accuracy: accuracy,
                             altitude: altitude
                         }
                     };
@@ -187,256 +129,9 @@
                 console.log("Orientation status:", status.orientation);
                 if (!status.geolocation) {
                     showPopup("Konum alınamadı", "red");
-                } else {
-                    showPopup("Konum takip ediliyor (Kalman filtresi aktif)", "green");
                 }
             }
         }).addTo(map);
-        
-        // Konum verilerini işleme ve filtreleme
-        function processNewLocation(location) {
-            const now = Date.now();
-            const isFirstLocation = lastValidLocation === null;
-            
-            // Doğruluk kontrolü - çok düşük doğrulukta olan verileri kabul etme
-            if (location.accuracy > 100) { // 100 metreden yüksek doğruluk değerlerini filtrele
-                console.log("Düşük doğruluk verisi:", location.accuracy);
-                return lastValidLocation || location; // Son geçerli konum yoksa mecburen ham veriyi kullan
-            }
-            
-            // Konum geçmişine ekle
-            locationHistory.push(location);
-            
-            // Geçmiş uzunluğunu sınırla
-            if (locationHistory.length > MAX_HISTORY_LENGTH) {
-                locationHistory.shift();
-            }
-            
-            // İlk konum verisi ise, Kalman filtresini başlat ve veriyi olduğu gibi döndür
-            if (isFirstLocation) {
-                // Kalman filtrelerini başlat
-                kalmanLat.filter(location.lat);
-                kalmanLng.filter(location.lng);
-                
-                lastValidLocation = location;
-                lastUpdateTime = now;
-                return location;
-            }
-            
-            // Geodesy ile önceki konumla arasındaki mesafeyi hesapla
-            const prevPoint = L.latLng(lastValidLocation.lat, lastValidLocation.lng);
-            const newPoint = L.latLng(location.lat, location.lng);
-            
-            // Geodesy ile tam hesaplama yap
-            const distance = L.GeometryUtil.length([prevPoint, newPoint]); // metre cinsinden
-            
-            // Zaman farkını hesapla (saniye cinsinden)
-            const timeDiff = (now - lastUpdateTime) / 1000;
-            
-            // Hız kontrolü (m/s)
-            let speed = timeDiff > 0 ? distance / timeDiff : 0;
-            
-            // Kalman filtresi ile hızı pürüzsüzleştir
-            const filteredSpeed = kalmanSpeed.filter(speed);
-            console.log("Ham hız:", speed, "m/s, Filtrelenmiş hız:", filteredSpeed, "m/s");
-            
-            // Aşırı hız kontrolü (insan yürüme/koşma hızının çok üstündeyse filtrele)
-            // Ortalama insan yürüme hızı ~1.4 m/s, koşma hızı ~4-6 m/s
-            const MAX_REASONABLE_SPEED = 10; // m/s (36 km/saat)
-            
-            // Konum sıçraması veya aşırı hız kontrolü
-            if (distance > JUMP_THRESHOLD || filteredSpeed > MAX_REASONABLE_SPEED) {
-                console.log("Konum sıçraması veya aşırı hız tespit edildi:", distance, "metre,", filteredSpeed, "m/s");
-                
-                // Kullanıcıya bildir
-                showPopup("Konum sinyali zayıf - Filtreleniyor", "orange");
-                
-                // Eğer elimizde yeterli konum geçmişi varsa, ortalama hesapla
-                if (locationHistory.length >= 3) {
-                    // Son 3 konumun ağırlıklı ortalamasını al (daha yeni olanlara daha fazla ağırlık ver)
-                    const weights = [0.2, 0.3, 0.5]; // Ağırlıklar toplamı 1 olmalı
-                    let weightedLat = 0;
-                    let weightedLng = 0;
-                    
-                    for (let i = 0; i < 3; i++) {
-                        const idx = locationHistory.length - 3 + i;
-                        weightedLat += locationHistory[idx].lat * weights[i];
-                        weightedLng += locationHistory[idx].lng * weights[i];
-                    }
-                    
-                    // Kalman filtresi ile pürüzsüzleştir
-                    const filteredLat = kalmanLat.filter(weightedLat);
-                    const filteredLng = kalmanLng.filter(weightedLng);
-                    
-                    lastValidLocation = {
-                        lat: filteredLat,
-                        lng: filteredLng,
-                        accuracy: location.accuracy,
-                        angle: location.angle,
-                        timestamp: now
-                    };
-                } else {
-                    // Yeterli geçmiş yoksa son geçerli konumu kullan
-                    // Kalman filtresi son değerini koruyacak
-                }
-            } else {
-                // Normal durum - Kalman filtresini uygula
-                const filteredLat = kalmanLat.filter(location.lat);
-                const filteredLng = kalmanLng.filter(location.lng);
-                
-                lastValidLocation = {
-                    lat: filteredLat,
-                    lng: filteredLng,
-                    accuracy: location.accuracy,
-                    angle: location.angle,
-                    timestamp: now
-                };
-            }
-            
-            // Son güncelleme zamanını kaydet
-            lastUpdateTime = now;
-            lastSpeed = filteredSpeed;
-            
-            return lastValidLocation;
-        }
-        
-        // Ham konum noktalarını hata ayıklama için göster
-        function addRawLocationPoint(lat, lng) {
-            if (!rawLocationsLine) {
-                rawLocationsLine = L.polyline([], {
-                    color: 'red',
-                    weight: 2,
-                    dashArray: '5, 5'
-                }).addTo(map);
-            }
-            
-            // Çizgiye yeni nokta ekle
-            const latlngs = rawLocationsLine.getLatLngs();
-            latlngs.push([lat, lng]);
-            rawLocationsLine.setLatLngs(latlngs);
-        }
-        
-        // Filtrelenmiş konum noktalarını hata ayıklama için göster
-        function addFilteredLocationPoint(lat, lng) {
-            if (!filteredLocationsLine) {
-                filteredLocationsLine = L.polyline([], {
-                    color: 'green',
-                    weight: 3
-                }).addTo(map);
-            }
-            
-            // Çizgiye yeni nokta ekle
-            const latlngs = filteredLocationsLine.getLatLngs();
-            latlngs.push([lat, lng]);
-            filteredLocationsLine.setLatLngs(latlngs);
-        }
-        
-        // Hata ayıklama modunu açıp kapatma
-        function toggleDebugMode() {
-            isDebugMode = !isDebugMode;
-            
-            // Buton durumunu güncelle
-            const debugButton = document.getElementById('debugButton');
-            
-            if (isDebugMode) {
-                showPopup("Hata ayıklama modu açık", "blue");
-                console.log("Hata ayıklama modu açık - Konum izleri gösteriliyor");
-                debugButton.classList.add('active');
-                debugButton.innerText = "Hata Ayıklama Kapat";
-            } else {
-                showPopup("Hata ayıklama modu kapalı", "blue");
-                console.log("Hata ayıklama modu kapalı");
-                debugButton.classList.remove('active');
-                debugButton.innerText = "Hata Ayıklama Aç";
-                
-                // Hata ayıklama çizgilerini temizle
-                if (rawLocationsLine) {
-                    map.removeLayer(rawLocationsLine);
-                    rawLocationsLine = null;
-                }
-                if (filteredLocationsLine) {
-                    map.removeLayer(filteredLocationsLine);
-                    filteredLocationsLine = null;
-                }
-            }
-        }
-        
-        // Kalman filtresi ayarlarını güncelleme
-        function updateKalmanSettings(measurementNoise, processNoise) {
-            // R: Ölçüm gürültüsü - GPS doğruluğuna olan güven
-            // - Düşük değer: GPS verilerine daha çok güven (daha az filtreleme)
-            // - Yüksek değer: GPS verilerine daha az güven (daha çok filtreleme)
-            
-            // Q: Proses gürültüsü - Sisteme olan güven
-            // - Düşük değer: Daha pürüzsüz, ama daha yavaş tepki
-            // - Yüksek değer: Daha hızlı tepki, ama daha az pürüzsüz
-            
-            kalmanLat.setMeasurementNoise(measurementNoise);
-            kalmanLat.setProcessNoise(processNoise);
-            
-            kalmanLng.setMeasurementNoise(measurementNoise);
-            kalmanLng.setProcessNoise(processNoise);
-            
-            showPopup(`Kalman ayarları güncellendi - R:${measurementNoise}, Q:${processNoise}`, "blue");
-            console.log("Kalman filtresi ayarları güncellendi:", {R: measurementNoise, Q: processNoise});
-        }
-        
-        // Konum geçmişini temizle
-        function clearLocationHistory() {
-            locationHistory = [];
-            lastValidLocation = null;
-            lastUpdateTime = null;
-            lastSpeed = 0;
-            
-            // Kalman filtrelerini sıfırla
-            kalmanLat.reset();
-            kalmanLng.reset();
-            kalmanSpeed.reset();
-            
-            showPopup("Konum geçmişi ve filtreler temizlendi", "orange");
-            console.log("Konum geçmişi ve filtreler temizlendi");
-            
-            // Hata ayıklama çizgilerini temizle
-            if (rawLocationsLine) {
-                map.removeLayer(rawLocationsLine);
-                rawLocationsLine = null;
-            }
-            if (filteredLocationsLine) {
-                map.removeLayer(filteredLocationsLine);
-                filteredLocationsLine = null;
-            }
-        }
-        
-        // Filtreleme modunu değiştir
-        function updateFilterMode(mode) {
-            switch(mode) {
-                case "strong":
-                    // Güçlü filtreleme - GPS verilerine daha az güven, daha pürüzsüz hareket
-                    updateKalmanSettings(1.0, 0.01);
-                    JUMP_THRESHOLD = 30; // Daha kısa mesafede sıçrama tespiti
-                    break;
-                case "light":
-                    // Hafif filtreleme - GPS verilerine daha çok güven, daha hızlı tepki
-                    updateKalmanSettings(0.01, 1.0);
-                    JUMP_THRESHOLD = 80; // Daha uzun mesafede sıçrama tespiti
-                    break;
-                case "normal":
-                default:
-                    // Normal filtreleme - dengeli ayarlar
-                    updateKalmanSettings(0.1, 0.5);
-                    JUMP_THRESHOLD = 50; // Orta seviyede sıçrama tespiti
-                    break;
-            }
-            
-            showPopup("Filtreleme modu: " + mode, "green");
-        }
-        
-        // Konsola yardım bilgilerini yazdır
-        console.log("Konum filtreleme ve hata ayıklama fonksiyonları:");
-        console.log("- toggleDebugMode(): Hata ayıklama modunu açıp kapatır");
-        console.log("- updateKalmanSettings(R, Q): Kalman filtresi ayarlarını günceller");
-        console.log("- clearLocationHistory(): Konum geçmişini ve filtreleri temizler");
-        console.log("- updateFilterMode('strong'|'normal'|'light'): Filtreleme modunu değiştirir");
 
         // Check location and find the closest door based on altitude
         function checkLocation(lat, lng, altitude) {
