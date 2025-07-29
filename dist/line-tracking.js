@@ -13,8 +13,7 @@ let fullPolyline = L.polyline(polylineCoords, {
 let traveledPolyline;
 let userToLine;
 
-// SimpleLocate ile entegrasyon
-// Artık navigator.geolocation kullanmak yerine SimpleLocate'den gelen verileri kullanacağız
+
 const simpleLocateControl = document.querySelector('.leaflet-simple-locate');
 if (simpleLocateControl) {
     console.log("Line tracking: SimpleLocate kontrolü bulundu, entegrasyon hazır");
@@ -25,6 +24,15 @@ function updateUserPosition(position) {
     // Konum verisi kontrolü - SimpleLocate'den gelen verileri kullanabilir
     if (!position || !position.coords) {
         console.warn("Line tracking: Geçerli konum bilgisi alınamadı");
+        return;
+    }
+    
+    // Eğer konum henüz stabil değilse (konum optimize edici tarafından belirlenmiş)
+    // ve stabilitiy-indicator "Stabilize Ediliyor..." gösteriyorsa, 
+    // rota çizgilerini güncellemeyi atla
+    const stabilityIndicator = document.getElementById('stability-indicator');
+    if (stabilityIndicator && stabilityIndicator.textContent === "Stabilize Ediliyor...") {
+        console.log("Line tracking: Konum henüz stabil değil, güncelleme atlanıyor");
         return;
     }
     

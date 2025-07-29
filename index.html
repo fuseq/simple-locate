@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="dist/leaflet-simple-locate.min.js"></script>
-
+    <script src="dist/location-optimizer.js"></script>
 
     <link rel="stylesheet" href="examples/demo.css" />
     <link rel="stylesheet" href="examples/style.css" />
@@ -17,6 +17,14 @@
 
 <body>
     <div id="map"></div>
+    <div id="floor-indicator" style="position: absolute; bottom: 20px; left: 20px; z-index: 1000; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 4px; box-shadow: 0 0 10px rgba(0,0,0,0.2); font-weight: bold;">
+        Bulunduğunuz Kat: <span id="current-floor">--</span>
+    </div>
+    
+    <div id="location-status" style="position: absolute; bottom: 70px; left: 20px; z-index: 1000; background: rgba(255,255,255,0.8); padding: 10px; border-radius: 4px; box-shadow: 0 0 10px rgba(0,0,0,0.2);">
+        <div>Konum Durumu: <span id="stability-indicator" style="color: orange;">Stabilize Ediliyor...</span></div>
+        <div>Doğruluk: <span id="accuracy-indicator">--</span> m</div>
+    </div>
     <script>
         "use strict";
 
@@ -100,29 +108,181 @@
                 let accuracy = location.accuracy; // Konum doğruluğu
                 let angle = location.angle; // Cihaz yönü (varsa)
                 
+                // Ham konum verisini loglama
+                console.log("Ham konum - Lat:", lat, "Lng:", lng, "Accuracy:", accuracy);
+                
+                // Konum verisini optimize et
+                const optimizedLocation = window.locationOptimizer.processLocation({
+                    lat: lat,
+                    lng: lng,
+                    accuracy: accuracy,
+                    timestamp: new Date().getTime()
+                });
+                
+                // Eğer optimize edilmiş bir konum varsa, onu kullan
+                if (optimizedLocation) {
+                    lat = optimizedLocation.lat;
+                    lng = optimizedLocation.lng;
+                    // accuracy değerini koruyoruz çünkü optimizasyon bu değeri değiştirmez
+                    
+                    console.log("Optimize edilmiş konum - Lat:", lat, "Lng:", lng);
+                    
+                    // Konum durumu göstergesini güncelle
+                    const stabilityIndicator = document.getElementById('stability-indicator');
+                    const accuracyIndicator = document.getElementById('accuracy-indicator');
+                    
+                    // Doğruluk göstergesini güncelle
+                    accuracyIndicator.textContent = accuracy.toFixed(1);
+                    
+                    // Stabilite göstergesini güncelle
+                    if (window.locationOptimizer.getStableLocation()) {
+                        stabilityIndicator.textContent = "Stabil";
+                        stabilityIndicator.style.color = "green";
+                    } else {
+                        stabilityIndicator.textContent = "Stabilize Ediliyor...";
+                        stabilityIndicator.style.color = "orange";
+                    }
+                }
+                
+                // Altitude bilgisini almak için navigator.geolocation'ı kullanıyoruz
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        let altitude;
+                        let floorNumber;
+                        
+                        // Eğer gerçek altitude değeri mevcutsa, onu kullan
+                        if (position.coords.altitude !== null) {
+                            altitude = position.coords.altitude;
+                            console.log("Gerçek altitude:", altitude);
+                            
+                            // Altitude değerine göre en yakın katı belirle
+                            floorNumber = determineFloorByAltitude(altitude);
+                            console.log("Belirlenen kat:", floorNumber);
+                            
+                            // Belirlenen kata göre altitude değerini güncelle (tam değer için)
+                            altitude = floorsAltitude[floorNumber];
+                            
+                            // UI'da kat göstergesini güncelle
+                            document.getElementById('current-floor').textContent = floorNumber;
+                        } else {
+                            // Altitude bilgisi yoksa varsayılan değeri kullan
+                            floorNumber = 0; // Varsayılan kat
+                            altitude = floorsAltitude[floorNumber];
+                            console.log("Altitude bilgisi mevcut değil, varsayılan değer kullanılıyor:", altitude);
+                        }
+                        
+                        // Konum kontrolü yap
+                        checkLocation(lat, lng, altitude);
+                        
+                        // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
+                        if (typeof updateUserPosition === 'function') {
+                            // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
+                            const mockPosition = {
+                                coords: {
+                                    latitude: lat,
+                                    longitude: lng,
+                                    accuracy: accuracy,
+                                    altitude: altitude,
+                                    floor: floorNumber // Kat bilgisini de ekleyelim
+                                }
+                            };
+                            updateUserPosition(mockPosition);
+                        }
+                    },
+                    (error) => {
+                        console.error("Altitude bilgisi alınamadı:", error);
+                        // Hata durumunda varsayılan değeri kullan
+                        let floorNumber = 0; // Varsayılan kat
+                        let altitude = floorsAltitude[floorNumber];
+                        
+                        // UI'da kat göstergesini güncelle
+                        document.getElementById('current-floor').textContent = floorNumber;
+                        
+                        checkLocation(lat, lng, altitude);
+                        
+                        // Line tracking fonksiyonunu çağır
+                        if (typeof updateUserPosition === 'function') {
+                            const mockPosition = {
+                                coords: {
+                                    latitude: lat,
+                                    longitude: lng,
+                                    accuracy: accuracy,
+                                    altitude: altitude,
+                                    floor: floorNumber
+                                }
+                            };
+                            updateUserPosition(mockPosition);
+                        }
+                    },
+                    {enableHighAccuracy: true, timeout: 1500}
+                );
+            },
+            position: "topleft",
+            afterDeviceMove: (location) => {
+                // Bu fonksiyon, konum her değiştiğinde çağrılır
+                let lat = location.lat;
+                let lng = location.lng;
+                let accuracy = location.accuracy; // Konum doğruluğu
+                let angle = location.angle; // Cihaz yönü (varsa)
+                
                 console.log("Latitude:", lat);
                 console.log("Longitude:", lng);
                 console.log("Accuracy:", accuracy);
                 
-                // altitude bilgisi SimpleLocate'den doğrudan gelmiyor, 
-                // yaklaşık bir değer belirleyebiliriz (floorsAltitude değerlerine göre)
-                let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
-                
-                checkLocation(lat, lng, altitude);
-                
-                // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
-                if (typeof updateUserPosition === 'function') {
-                    // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
-                    const mockPosition = {
-                        coords: {
-                            latitude: lat,
-                            longitude: lng,
-                            accuracy: accuracy,
-                            altitude: altitude
+                // Altitude bilgisini almak için navigator.geolocation'ı bir kez daha kullanıyoruz
+                // SimpleLocate bu bilgiyi doğrudan sağlamıyor
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        let altitude;
+                        
+                        // Eğer gerçek altitude değeri mevcutsa, onu kullan
+                        if (position.coords.altitude !== null) {
+                            altitude = position.coords.altitude;
+                            console.log("Gerçek altitude:", altitude);
+                        } else {
+                            // Yoksa statik değeri kullan
+                            altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
+                            console.log("Altitude bilgisi mevcut değil, varsayılan değer kullanılıyor:", altitude);
                         }
-                    };
-                    updateUserPosition(mockPosition);
-                }
+                        
+                        // Konum kontrolü yap
+                        checkLocation(lat, lng, altitude);
+                        
+                        // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
+                        if (typeof updateUserPosition === 'function') {
+                            // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
+                            const mockPosition = {
+                                coords: {
+                                    latitude: lat,
+                                    longitude: lng,
+                                    accuracy: accuracy,
+                                    altitude: altitude
+                                }
+                            };
+                            updateUserPosition(mockPosition);
+                        }
+                    },
+                    (error) => {
+                        console.error("Altitude bilgisi alınamadı:", error);
+                        // Hata durumunda statik değeri kullan
+                        let altitude = floorsAltitude[0];
+                        checkLocation(lat, lng, altitude);
+                        
+                        // Line tracking fonksiyonunu çağır
+                        if (typeof updateUserPosition === 'function') {
+                            const mockPosition = {
+                                coords: {
+                                    latitude: lat,
+                                    longitude: lng,
+                                    accuracy: accuracy,
+                                    altitude: altitude
+                                }
+                            };
+                            updateUserPosition(mockPosition);
+                        }
+                    },
+                    {enableHighAccuracy: true, timeout: 1000}
+                );
             },
             afterClick: (status) => {
                 console.log("Geolocation status:", status.geolocation);
@@ -188,6 +348,29 @@
         // Function to show a popup
         function showPopup(message, color) {
             let popup = L.popup().setLatLng(map.getCenter()).setContent(`<span style="color: ${color}">${message}</span>`).openOn(map);
+        }
+        
+        // Altitude değerine göre hangi katta olduğunu belirleyen fonksiyon
+        function determineFloorByAltitude(altitude) {
+            // Tüm kat altitude değerlerini al
+            const floorAltitudes = Object.entries(floorsAltitude).map(([floor, alt]) => ({
+                floor: parseInt(floor),
+                altitude: alt
+            }));
+            
+            // En yakın katı bul
+            let closestFloor = 0;
+            let minDifference = Infinity;
+            
+            floorAltitudes.forEach(item => {
+                const difference = Math.abs(item.altitude - altitude);
+                if (difference < minDifference) {
+                    minDifference = difference;
+                    closestFloor = item.floor;
+                }
+            });
+            
+            return closestFloor;
         }
 
     </script>
