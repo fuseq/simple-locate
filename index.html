@@ -93,6 +93,16 @@
 
         const control = new L.Control.SimpleLocate({
             position: "topleft",
+            // Gelişmiş filtreleme ayarları
+            enableFiltering: true,
+            maxAcceptableAccuracy: 100,    // 100 metreden daha düşük doğruluklu verileri kabul etme
+            maxSpeedThreshold: 20,         // 20 m/s'den hızlı konum değişimlerini filtrele (72 km/saat)
+            historySize: 5,                // Son 5 konumu geçmişte tut
+            distanceThreshold: 30,         // 30 metreden büyük ani değişimleri filtrele
+            useWeightedAverage: true,      // Ağırlıklı ortalama filtreleme kullan
+            useKalmanFilter: false,        // Kalman filtresi kullanma (daha ağır işlem yükü)
+            debugMode: false,              // Hata ayıklama modu (konsola log yazdırma)
+            
             afterDeviceMove: (location) => {
                 // Bu fonksiyon, konum her değiştiğinde çağrılır
                 let lat = location.lat;
@@ -103,6 +113,11 @@
                 console.log("Latitude:", lat);
                 console.log("Longitude:", lng);
                 console.log("Accuracy:", accuracy);
+                
+                // Konum doğruluğu çok düşükse kullanıcıya bildir
+                if (accuracy > 50) {
+                    showPopup("Düşük GPS doğruluğu: " + Math.round(accuracy) + "m", "orange");
+                }
                 
                 // altitude bilgisi SimpleLocate'den doğrudan gelmiyor, 
                 // yaklaşık bir değer belirleyebiliriz (floorsAltitude değerlerine göre)
@@ -129,9 +144,32 @@
                 console.log("Orientation status:", status.orientation);
                 if (!status.geolocation) {
                     showPopup("Konum alınamadı", "red");
+                } else {
+                    showPopup("Konum takip ediliyor", "green");
                 }
             }
         }).addTo(map);
+        
+        // Konum filtreleme kalitesini değiştirmek için özel fonksiyon
+        function updateLocationFiltering(highQuality = true) {
+            if (highQuality) {
+                // Yüksek kalite filtreleme (daha hassas)
+                control.updateFilteringOptions({
+                    maxSpeedThreshold: 10,         // 10 m/s (36 km/saat)
+                    distanceThreshold: 15,         // 15 metre
+                    useWeightedAverage: true
+                });
+                showPopup("Hassas konum takibi aktif", "green");
+            } else {
+                // Normal kalite filtreleme (daha esnek)
+                control.updateFilteringOptions({
+                    maxSpeedThreshold: 20,         // 20 m/s (72 km/saat)
+                    distanceThreshold: 30,         // 30 metre
+                    useWeightedAverage: true
+                });
+                showPopup("Normal konum takibi aktif", "blue");
+            }
+        }
 
         // Check location and find the closest door based on altitude
         function checkLocation(lat, lng, altitude) {
