@@ -1,178 +1,19 @@
 <!DOCTYPE html>
-<html lang="zh-Hant-TW">
+<html lang="tr">
 
 <head>
     <meta charset="utf-8" />
-    <title>Leaflet.SimpleLocate - Demo</title>
+    <title>Leaflet.SimpleLocate - İç Mekan Navigasyon</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
-    <script src="dist/leaflet-simple-locate.min.js"></script>
-
-
+    <script src="src/leaflet-simple-locate.js"></script>
     <link rel="stylesheet" href="examples/demo.css" />
     <link rel="stylesheet" href="examples/style.css" />
-
 </head>
 
 <body>
     <div id="map"></div>
-    <script>
-        "use strict";
-
-        // Katların yükseklik bilgilerini JavaScript nesnesinde saklayacağız
-        const floorsAltitude = {
-            0: 1150,  // Kat 0 için altitude
-            1: 1160  // Kat 1 için altitude
-        };
-        const minLat = 37.4250453, maxLat = 37.4268453;
-        const minLng = 31.8511658, maxLng = 31.8533658;
-        let linesArray0 = [];
-        let linesArray1 = [];
-
-        // Helper function for converting local coordinates to lat/lng
-        function localCoordinateToLatLng(x, y, viewBox) {
-            const latDiff = maxLat - minLat;
-            const lngDiff = maxLng - minLng;
-            const latLocalDiff = (y / viewBox.height) * latDiff;
-            const lngLocalDiff = (x / viewBox.width) * lngDiff;
-            return new L.LatLng(maxLat - latLocalDiff, minLng + lngLocalDiff);
-        }
-
-        // Function to fetch SVG files and parse the doors
-        function fetchAndParseSVG(file) {
-            fetch(file)
-                .then(response => response.text())
-                .then(svgText => {
-                    const parser = new DOMParser();
-                    const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
-
-                    const doorsGroup = svgDoc.getElementById('Doors');
-                    if (doorsGroup) {
-                        const lines = doorsGroup.getElementsByTagName('line');
-                        const viewBox = svgDoc.documentElement.viewBox.baseVal;
-                        const linesArray = [];
-                        Array.from(lines).forEach(line => {
-                            const id = line.id;
-                            const x1 = parseFloat(line.getAttribute('x1'));
-                            const y1 = parseFloat(line.getAttribute('y1'));
-                            const x2 = parseFloat(line.getAttribute('x2'));
-                            const y2 = parseFloat(line.getAttribute('y2'));
-                            const startLatLng = localCoordinateToLatLng(x1, y1, viewBox);
-                            const endLatLng = localCoordinateToLatLng(x2, y2, viewBox);
-                            linesArray.push({
-                                id,
-                                start: { lat: startLatLng.lat, lng: startLatLng.lng },
-                                end: { lat: endLatLng.lat, lng: endLatLng.lng }
-                            });
-                        });
-                        if (file === 'files/0.svg') {
-                            linesArray0 = linesArray; // Kat 0
-                        } else if (file === 'files/1.svg') {
-                            linesArray1 = linesArray; // Kat 1
-                        }
-                    }
-                })
-                .catch(error => console.error('SVG yüklenirken hata:', error));
-        }
-
-        // Fetch the SVG files for both floors
-        fetchAndParseSVG('files/0.svg');
-        fetchAndParseSVG('files/1.svg');
-
-        // Map initialization
-        const map = new L.Map("map", {
-            center: [37.425930, 31.852214],
-            zoom: 18,
-            zoomControl: false,
-        });
-
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-
-        const control = new L.Control.SimpleLocate({
-            position: "topleft",
-            afterClick: () => {
-                navigator.geolocation.getCurrentPosition(
-                    function (position) {
-                        let lat = position.coords.latitude;
-                        let lng = position.coords.longitude;
-                        let altitude = position.coords.altitude;
-                        console.log("Latitude:", lat);
-                        console.log("Longitude:", lng);
-                        console.log("Altitude:", altitude); // Altitude bilgisini yazdırıyoruz
-                        checkLocation(lat, lng, altitude); // Konum ve altitude'u kontrol fonksiyonuna gönderiyoruz
-                    },
-                    function (error) {
-                        console.error("Konum hatası:", error.message);
-                        showPopup("Konum alınamadı", "red");
-                    },
-                    {
-                        enableHighAccuracy: true
-                    }
-                );
-            }
-        }).addTo(map);
-
-        // Check location and find the closest door based on altitude
-        function checkLocation(lat, lng, altitude) {
-            console.log("Checking Location:", lat, lng, altitude); // Debugging the received coordinates and altitude
-
-            // Determine which floor the user is on based on altitude
-            let linesArray;
-            if (altitude >= floorsAltitude[0] && altitude < floorsAltitude[1]) {
-                console.log("Kat 0'da");
-                linesArray = linesArray0;
-            } else if (altitude >= floorsAltitude[1]) {
-                console.log("Kat 1'de");
-                linesArray = linesArray1;
-            }
-
-            // Log the boundary values for debugging
-            console.log("Min Lat:", minLat, "Max Lat:", maxLat);
-            console.log("Min Lng:", minLng, "Max Lng:", maxLng);
-
-            // Check if the user is inside the boundaries
-            if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) {
-                console.log("❌ Dışarıda");
-                showPopup("❌ Dışarıda", "red");
-            } else {
-                console.log("✅ İçeridesiniz");
-                findClosestLine(lat, lng, linesArray);
-            }
-        }
-
-        // Function to find the closest door
-        function findClosestLine(lat, lng, linesArray) {
-            let closestLine = null;
-            let minDistance = Infinity;
-
-            linesArray.forEach(line => {
-                const startDist = map.distance([lat, lng], [line.start.lat, line.start.lng]);
-                const endDist = map.distance([lat, lng], [line.end.lat, line.end.lng]);
-                const minLineDist = Math.min(startDist, endDist);
-
-                if (minLineDist < minDistance) {
-                    minDistance = minLineDist;
-                    closestLine = line;
-                }
-            });
-
-            // If a closest line is found, display the result
-            if (closestLine) {
-                showPopup(`En Yakın Kapı: ${closestLine.id}`, "blue");
-            } else {
-                showPopup("Kapı Bulunamadı", "orange");
-            }
-        }
-
-        // Function to show a popup
-        function showPopup(message, color) {
-            let popup = L.popup().setLatLng(map.getCenter()).setContent(`<span style="color: ${color}">${message}</span>`).openOn(map);
-        }
-
-    </script>
     <script src="dist/line-tracking.js"></script>
 </body>
 
