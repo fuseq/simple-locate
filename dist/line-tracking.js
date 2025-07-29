@@ -13,17 +13,36 @@ let fullPolyline = L.polyline(polylineCoords, {
 let traveledPolyline;
 let userToLine;
 
-// Kullanıcı konumunu sürekli takip et
-navigator.geolocation.watchPosition(updateUserPosition, console.error, {
-    enableHighAccuracy: true
-});
-
-// Kullanıcı konumunu güncelleyen fonksiyon
+// SimpleLocate ile entegrasyon
+// Artık navigator.geolocation kullanmak yerine SimpleLocate'den gelen verileri kullanacağız
+const simpleLocateControl = document.querySelector('.leaflet-simple-locate');
+if (simpleLocateControl) {
+    console.log("Line tracking: SimpleLocate kontrolü bulundu, entegrasyon hazır");
+} else {
+    console.warn("Line tracking: SimpleLocate kontrolü bulunamadı!");
+}// Kullanıcı konumunu güncelleyen fonksiyon
 function updateUserPosition(position) {
+    // Konum verisi kontrolü - SimpleLocate'den gelen verileri kullanabilir
+    if (!position || !position.coords) {
+        console.warn("Line tracking: Geçerli konum bilgisi alınamadı");
+        return;
+    }
+    
     const userLatLng = L.latLng(position.coords.latitude, position.coords.longitude);
+    console.log("Line tracking: Konum güncellendi", userLatLng);
+    
     const closestPointData = getClosestPointOnLine(userLatLng, polylineCoords);
     const closestPoint = closestPointData.point;
     const distance = userLatLng.distanceTo(closestPoint);
+
+    // Eğer çok uzaktaysa (örneğin 50 metre) rota takibini gösterme
+    if (distance > 50) {
+        console.log("Line tracking: Kullanıcı rotadan çok uzakta, mesafe:", distance);
+        // Önceki çizgileri temizle
+        if (userToLine) map.removeLayer(userToLine);
+        if (traveledPolyline) map.removeLayer(traveledPolyline);
+        return;
+    }
 
     // Önceki çizgileri temizle
     if (userToLine) map.removeLayer(userToLine);

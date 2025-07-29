@@ -93,25 +93,43 @@
 
         const control = new L.Control.SimpleLocate({
             position: "topleft",
-            afterClick: () => {
-                navigator.geolocation.getCurrentPosition(
-                    function (position) {
-                        let lat = position.coords.latitude;
-                        let lng = position.coords.longitude;
-                        let altitude = position.coords.altitude;
-                        console.log("Latitude:", lat);
-                        console.log("Longitude:", lng);
-                        console.log("Altitude:", altitude); // Altitude bilgisini yazdırıyoruz
-                        checkLocation(lat, lng, altitude); // Konum ve altitude'u kontrol fonksiyonuna gönderiyoruz
-                    },
-                    function (error) {
-                        console.error("Konum hatası:", error.message);
-                        showPopup("Konum alınamadı", "red");
-                    },
-                    {
-                        enableHighAccuracy: true
-                    }
-                );
+            afterDeviceMove: (location) => {
+                // Bu fonksiyon, konum her değiştiğinde çağrılır
+                let lat = location.lat;
+                let lng = location.lng;
+                let accuracy = location.accuracy; // Konum doğruluğu
+                let angle = location.angle; // Cihaz yönü (varsa)
+                
+                console.log("Latitude:", lat);
+                console.log("Longitude:", lng);
+                console.log("Accuracy:", accuracy);
+                
+                // altitude bilgisi SimpleLocate'den doğrudan gelmiyor, 
+                // yaklaşık bir değer belirleyebiliriz (floorsAltitude değerlerine göre)
+                let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
+                
+                checkLocation(lat, lng, altitude);
+                
+                // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
+                if (typeof updateUserPosition === 'function') {
+                    // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
+                    const mockPosition = {
+                        coords: {
+                            latitude: lat,
+                            longitude: lng,
+                            accuracy: accuracy,
+                            altitude: altitude
+                        }
+                    };
+                    updateUserPosition(mockPosition);
+                }
+            },
+            afterClick: (status) => {
+                console.log("Geolocation status:", status.geolocation);
+                console.log("Orientation status:", status.orientation);
+                if (!status.geolocation) {
+                    showPopup("Konum alınamadı", "red");
+                }
             }
         }).addTo(map);
 
