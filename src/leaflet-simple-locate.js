@@ -148,7 +148,6 @@
             this._latitude = undefined;
             this._longitude = undefined;
             this._accuracy = undefined;
-            this._altitude = undefined;
             this._angle = undefined;
         },
 
@@ -187,11 +186,6 @@
         getAngle: function () {
             if (!this._angle) return null;
             return this._angle;
-        },
-
-        getAltitude: function () {
-            if (!this._altitude) return null;
-            return this._altitude;
         },
 
         setZoomLevel: function (level) {
@@ -324,7 +318,6 @@
             this._latitude = undefined;
             this._longitude = undefined;
             this._accuracy = undefined;
-            this._altitude = undefined;
         },
 
         _watchOrientation: function () {
@@ -344,39 +337,10 @@
             if (this._latitude && event.latitude && Math.round(this._latitude * 1000000) === Math.round(event.latitude * 1000000) &&
                 this._longitude && event.longitude && Math.round(this._longitude * 1000000) === Math.round(event.longitude * 1000000) &&
                 this._accuracy && event.accuracy && Math.round(this._accuracy * 100) === Math.round(event.accuracy * 100)) return;
-            
             this._latitude = event.latitude;
             this._longitude = event.longitude;
             this._accuracy = event.accuracy;
-            
-            // Altitude bilgisini al (mevcut ise)
-            if (event.altitude !== undefined) {
-                this._altitude = event.altitude;
-            } else if (event.coords && event.coords.altitude !== undefined) {
-                this._altitude = event.coords.altitude;
-            } else {
-                // Altitude bilgisi yoksa navigatörden almaya çalış
-                this._checkNavigatorAltitude();
-            }
-            
             this._updateMarker();
-        },
-        
-        _checkNavigatorAltitude: function() {
-            if (typeof navigator !== "object" || !("geolocation" in navigator)) return;
-            
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    if (position.coords && position.coords.altitude !== undefined && position.coords.altitude !== null) {
-                        this._altitude = position.coords.altitude;
-                        this._updateMarker();
-                    }
-                },
-                () => {
-                    // Hata durumunda sessizce devam et
-                },
-                { maximumAge: 0, enableHighAccuracy: true }
-            );
         },
 
         // _onLocationError: function (event) {
@@ -458,7 +422,6 @@
                 lat: this._latitude,
                 lng: this._longitude,
                 accuracy: this._accuracy,
-                altitude: this._altitude,
                 angle: this._angle,
             });
 
