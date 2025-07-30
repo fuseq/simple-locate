@@ -158,23 +158,41 @@
             }
         }).addTo(map);
 
+        // Wei Ye Algoritması UI kontrolü oluştur (İsteğe Bağlı)
         function createWeiYeInfoControl() {
             const weiYeInfoControl = L.Control.extend({
                 options: {
-                    position: 'bottomright'
+                    position: 'topright' // bottomright yerine topright
                 },
 
                 onAdd: function (map) {
                     this._container = L.DomUtil.create('div', 'leaflet-control leaflet-control-wei-ye-info');
-                    this._container.innerHTML = `
-                <div class="wei-ye-info-panel">
-                    <div class="wei-ye-title">Konum Filtresi: Aktif</div>
-                    <div class="wei-ye-stats">
-                        <div>Doğruluk: <span class="accuracy-value">--</span> m</div>
-                        <div>Durum: <span class="is-filtered">Bekleniyor</span></div>
+
+                    // Mobil mi kontrol et
+                    const isMobile = window.innerWidth <= 640;
+
+                    // Mobil cihazlarda daha kompakt içerik
+                    if (isMobile) {
+                        this._container.innerHTML = `
+                    <div class="wei-ye-info-panel">
+                        <div class="wei-ye-title">Konum Filtresi</div>
+                        <div class="wei-ye-stats">
+                            <div>Doğruluk: <span class="accuracy-value">--</span>m</div>
+                        </div>
                     </div>
-                </div>
-            `;
+                `;
+                    } else {
+                        // Masaüstü için tam içerik
+                        this._container.innerHTML = `
+                    <div class="wei-ye-info-panel">
+                        <div class="wei-ye-title">Konum Filtresi: Aktif</div>
+                        <div class="wei-ye-stats">
+                            <div>Doğruluk: <span class="accuracy-value">--</span> m</div>
+                            <div>Durum: <span class="is-filtered">Bekleniyor</span></div>
+                        </div>
+                    </div>
+                `;
+                    }
 
                     L.DomEvent.disableClickPropagation(this._container);
                     return this._container;
@@ -199,6 +217,7 @@
                         }
                     }
 
+                    // Mobilde is-filtered elementi olmayabilir
                     if (filteredEl) {
                         if (stats.isJump) {
                             filteredEl.textContent = "Sıçrama düzeltildi";
@@ -219,6 +238,15 @@
 
             // Kontrol oluştur ve ekle
             const weiYeInfo = new weiYeInfoControl().addTo(map);
+
+            // Pencere boyutu değiştiğinde yeniden oluştur
+            window.addEventListener('resize', () => {
+                map.removeControl(weiYeInfo);
+                const newWeiYeInfo = new weiYeInfoControl().addTo(map);
+
+                // Referansı güncelle
+                weiYeInfo._container = newWeiYeInfo._container;
+            });
 
             // SimpleLocate kontrolüne afterDeviceMove callbacki eklenmişse buradan bilgileri güncelle
             const originalAfterDeviceMove = control.options.afterDeviceMove;
