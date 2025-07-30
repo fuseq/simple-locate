@@ -43,7 +43,7 @@
             setViewAfterClick: true,
             zoomLevel: undefined,
             drawCircle: true,
-            
+
             // Wei Ye algoritması için seçenekler
             medianWindowSize: 5,          // Median filtre için pencere boyutu
             kalmanProcessNoise: 0.01,     // Kalman filtresi için Q değeri
@@ -159,7 +159,7 @@
             this._longitude = undefined;
             this._accuracy = undefined;
             this._angle = undefined;
-            
+
             // Median Filtre için özellikleri ekle
             this._medianFilter = {
                 windowSize: this.options.medianWindowSize,
@@ -168,7 +168,7 @@
                 accuracyHistory: [],
                 timestampHistory: []
             };
-            
+
             // Kalman Filtresi için özellikleri ekle
             this._kalmanFilter = {
                 Q_lat: this.options.kalmanProcessNoise,
@@ -180,7 +180,7 @@
                 P_lat: null, // Tahmin hatası kovaryansı (enlem)
                 P_lng: null  // Tahmin hatası kovaryansı (boylam)
             };
-            
+
             // Wei Ye algoritması durumunu takip etmek için özellikler
             this._weiYeState = {
                 lastFilteredPosition: null,
@@ -192,33 +192,33 @@
                     maxJumpDistance: 0
                 }
             };
-            
+
             // Filtreleme hata ayıklama için görsel öğeler
             this._rawPositionMarker = undefined;
         },
-        
+
         // Median Filtreyi uygula
-        _applyMedianFilter: function(position) {
+        _applyMedianFilter: function (position) {
             const m = this._medianFilter;
             const now = Date.now();
-            
+
             // Görsel aykırı değerleri tespit etmek için uzaklığı ölç
             if (m.latHistory.length > 0) {
                 const lastLat = m.latHistory[m.latHistory.length - 1];
                 const lastLng = m.lngHistory[m.lngHistory.length - 1];
                 const distance = L.latLng(lastLat, lastLng).distanceTo(L.latLng(position.latitude, position.longitude));
-                
+
                 if (this.options.showFilterInfo && distance > 50) {
                     console.log(`Wei Ye: Potansiyel aykırı değer tespit edildi - ${Math.round(distance)}m`);
                 }
             }
-            
+
             // Yeni değerleri geçmişe ekle
             m.latHistory.push(position.latitude);
             m.lngHistory.push(position.longitude);
             m.accuracyHistory.push(position.accuracy);
             m.timestampHistory.push(now);
-            
+
             // Pencere boyutunu aşarsa en eskisini kaldır
             while (m.latHistory.length > m.windowSize) {
                 m.latHistory.shift();
@@ -226,7 +226,7 @@
                 m.accuracyHistory.shift();
                 m.timestampHistory.shift();
             }
-            
+
             // Eğer yeteri kadar veri yoksa filtreleme yapma
             if (m.latHistory.length < 3) {
                 return {
@@ -236,14 +236,14 @@
                     timestamp: now
                 };
             }
-            
+
             // Değerleri sırala ve ortancayı bul
             const sortedLat = [...m.latHistory].sort((a, b) => a - b);
             const sortedLng = [...m.lngHistory].sort((a, b) => a - b);
             const sortedAcc = [...m.accuracyHistory].sort((a, b) => a - b);
-            
+
             const midIndex = Math.floor(sortedLat.length / 2);
-            
+
             return {
                 latitude: sortedLat[midIndex],
                 longitude: sortedLng[midIndex],
@@ -251,15 +251,11 @@
                 timestamp: now
             };
         },
-        
+
         // Kalman Filtreyi uygula
-        _applyKalmanFilter: function(position) {
+        _applyKalmanFilter: function (position) {
             const k = this._kalmanFilter;
-            
-            // Doğruluk değerine göre ölçüm gürültüsünü dinamik olarak ayarla
-            // Doğruluk kötüyse Kalman filtresinin ölçüme daha az güvenmesini sağla
-            const adaptiveR = Math.max(0.1, Math.min(1.0, position.accuracy / 10));
-            
+
             // İlk çalıştırma
             if (k.x_lat === null || k.x_lng === null) {
                 k.x_lat = position.latitude;
@@ -268,25 +264,25 @@
                 k.P_lng = 1.0;
                 return position;
             }
-            
+
             // Enlem için Kalman filtresini uygula
             let predicted_P_lat = k.P_lat + k.Q_lat;
-            let K_lat = predicted_P_lat / (predicted_P_lat + k.R_lat * adaptiveR);
+            let K_lat = predicted_P_lat / (predicted_P_lat + k.R_lat);
             let updated_x_lat = k.x_lat + K_lat * (position.latitude - k.x_lat);
             let updated_P_lat = (1 - K_lat) * predicted_P_lat;
-            
+
             // Boylam için Kalman filtresini uygula
             let predicted_P_lng = k.P_lng + k.Q_lng;
-            let K_lng = predicted_P_lng / (predicted_P_lng + k.R_lng * adaptiveR);
+            let K_lng = predicted_P_lng / (predicted_P_lng + k.R_lng);
             let updated_x_lng = k.x_lng + K_lng * (position.longitude - k.x_lng);
             let updated_P_lng = (1 - K_lng) * predicted_P_lng;
-            
+
             // Filtrelenmiş değerleri kaydet
             k.x_lat = updated_x_lat;
             k.x_lng = updated_x_lng;
             k.P_lat = updated_P_lat;
             k.P_lng = updated_P_lng;
-            
+
             return {
                 latitude: updated_x_lat,
                 longitude: updated_x_lng,
@@ -294,81 +290,128 @@
                 timestamp: position.timestamp
             };
         },
-        
-        // Wei Ye Algoritmasını uygula (Weighted Median + Kalman)
-        _applyWeiYeFilter: function(position) {
+
+        _detectUserMoving: function () {
+            const m = this._medianFilter;
+
+            // Yeteri kadar veri yoksa hareket halinde kabul et
+            if (m.latHistory.length < 3) {
+                return true;
+            }
+
+            // Son 3 konum arasındaki mesafeleri hesapla
+            const lastIndex = m.latHistory.length - 1;
+            const currentPos = L.latLng(m.latHistory[lastIndex], m.lngHistory[lastIndex]);
+            const prevPos = L.latLng(m.latHistory[lastIndex - 1], m.lngHistory[lastIndex - 1]);
+            const prevPrevPos = L.latLng(m.latHistory[lastIndex - 2], m.lngHistory[lastIndex - 2]);
+
+            const dist1 = currentPos.distanceTo(prevPos);
+            const dist2 = prevPos.distanceTo(prevPrevPos);
+
+            // Son kayıtlar arasında mesafe varsa hareket halinde
+            return (dist1 > 3 || dist2 > 3); // 3 metre üstü hareketi algıla
+        },
+
+        _applyWeiYeFilter: function (position) {
             // Filtreleme devre dışıysa, orijinal konumu döndür
             if (!this.options.enableFiltering) {
                 return position;
             }
-            
+
             // İstatistikleri güncelle
             this._weiYeState.filteringStats.totalUpdates++;
-            
+
             // Ham konumu kaydet
             this._weiYeState.lastRawPosition = {
                 latitude: position.latitude,
                 longitude: position.longitude,
                 accuracy: position.accuracy
             };
-            
-            // 1. Önce standart median filtre uygula
-            const medianFiltered = this._applyMedianFilter(position);
-            
+
+            // Performans optimizasyonu: Çok düşük doğruluk değerlerinde (çok kötü GPS sinyali - binalarda)
+            // daha agresif filtreleme yap, yüksek doğruluk değerlerinde (iyi GPS sinyali - açık alanda)
+            // daha az filtreleme yap
+            const isLowAccuracy = position.accuracy > 20;
+
+            // 1. Median filtre sadece düşük doğruluk durumlarında uygula
+            let medianFiltered;
+            if (isLowAccuracy) {
+                medianFiltered = this._applyMedianFilter(position);
+            } else {
+                medianFiltered = position; // İyi doğruluktaysa median filtre atla
+            }
+
             // 2. Median filtre ve ham veri arasındaki farkı hesapla (atlama tespiti)
-            const latDiff = Math.abs(position.latitude - medianFiltered.latitude);
-            const lngDiff = Math.abs(position.longitude - medianFiltered.longitude);
-            
+            // GPS'in doğruluğunu dikkate alarak sıçramayı hesapla - düşük doğrulukta daha toleranslı ol
+            const jumpDistanceThreshold = Math.max(5, position.accuracy / 3); // En az 5m, doğruluk/3 kadar 
+
             // Sapma mesafesini hesapla
             const jumpDistance = L.latLng(position.latitude, position.longitude)
                 .distanceTo(L.latLng(medianFiltered.latitude, medianFiltered.longitude));
-                
+
             // İstatistikler için en büyük sıçramayı kaydet
             if (jumpDistance > this._weiYeState.filteringStats.maxJumpDistance) {
                 this._weiYeState.filteringStats.maxJumpDistance = jumpDistance;
             }
-            
-            // Sıçrama tespiti
-            const isJump = (latDiff > this.options.jumpThreshold || lngDiff > this.options.jumpThreshold);
-            
+
+            // Sıçrama tespiti - mesafe ve koordinat farkını kontrol et
+            const latDiff = Math.abs(position.latitude - medianFiltered.latitude);
+            const lngDiff = Math.abs(position.longitude - medianFiltered.longitude);
+            const isJump = (jumpDistance > jumpDistanceThreshold) ||
+                (latDiff > this.options.jumpThreshold || lngDiff > this.options.jumpThreshold);
+
             if (isJump) {
                 this._weiYeState.filteringStats.jumpsDetected++;
                 this._weiYeState.isJumpDetected = true;
-                
+
                 if (this.options.showFilterInfo) {
                     console.log(`Wei Ye: Sıçrama tespit edildi (${Math.round(jumpDistance)}m) - Median filtrelenmiş değer kullanılıyor`);
                 }
-                
-                // Sıçrama uyarısı göster
-                if (this.options.showJumpWarnings) {
+
+                // Sıçrama uyarısı göster - sadece büyük sıçramalarda (10m üstü)
+                if (this.options.showJumpWarnings && jumpDistance > 10) {
                     this._showJumpWarning(jumpDistance);
                 }
             } else {
                 this._weiYeState.isJumpDetected = false;
             }
-            
-            // 3. Kalman filtresi uygula, ancak sıçrama durumunda parametreleri ayarla
-            let kalmanInput;
-            
+
+            // 3. Kalman filtresi uygula, duruma göre parametre ayarla
+            // Kalman filtresi ayarlarını hareket durumuna göre ayarla
+            const isUserMoving = this._detectUserMoving();
+
+            // Hareket durumuna göre Kalman filtre parametreleri
+            if (isUserMoving) {
+                // Hareket halinde daha hızlı tepki vermeli
+                this._kalmanFilter.Q_lat = this._kalmanFilter.Q_lng = this.options.kalmanProcessNoise * 2;
+            } else {
+                // Durağan haldeyken daha stabil filtreleme
+                this._kalmanFilter.Q_lat = this._kalmanFilter.Q_lng = this.options.kalmanProcessNoise / 2;
+            }
+
+            // Kalman parametrelerini ayarla
             if (isJump) {
-                // Ani sıçrama tespit edildiğinde:
-                // A) Kalman'ın ölçüm güvenilirliğini düşür (R değerini yükselt)
-                this._kalmanFilter.R_lat = this._kalmanFilter.R_lng = 1.0; 
-                
-                // B) Median filtrelenmiş değeri kullan
+                // Ani sıçrama tespit edildiğinde ölçüme daha az güven
+                this._kalmanFilter.R_lat = this._kalmanFilter.R_lng = 1.0;
+                // Median filtrelenmiş değeri kullan
                 kalmanInput = medianFiltered;
             } else {
-                // Normal durumlarda:
-                // A) Kalman'ın ölçüm güvenilirliğini normal seviyede tut
-                this._kalmanFilter.R_lat = this._kalmanFilter.R_lng = this.options.kalmanMeasurementNoise;
-                
-                // B) Ham konum değerini kullan
-                kalmanInput = position;
+                // Doğruluğa göre dinamik olarak Kalman filtre parametresini ayarla
+                const adaptiveR = Math.max(0.05, Math.min(0.5, position.accuracy / 20));
+                this._kalmanFilter.R_lat = this._kalmanFilter.R_lng = adaptiveR;
+
+                if (isLowAccuracy) {
+                    // Düşük doğrulukta median filtrelenmiş değeri kullan
+                    kalmanInput = medianFiltered;
+                } else {
+                    // İyi doğrulukta ham değeri kullan
+                    kalmanInput = position;
+                }
             }
-            
+
             // 4. Kalman filtresini uygula
             const kalmanFiltered = this._applyKalmanFilter(kalmanInput);
-            
+
             // 5. Filtrelenmiş konumun bilgilerini kaydet
             this._weiYeState.lastFilteredPosition = {
                 latitude: kalmanFiltered.latitude,
@@ -379,28 +422,28 @@
                 isFiltered: true,
                 isJump: isJump
             };
-            
-            // 6. Filtreleme görsellerini güncelle
+
+            // Filtreleme görsellerini güncelle (opsiyonel)
             if (this.options.showFilterDebug) {
                 this._visualizeFiltering();
             }
-            
+
             return kalmanFiltered;
         },
-        
+
         // Sıçrama uyarısı göster
-        _showJumpWarning: function(distance) {
+        _showJumpWarning: function (distance) {
             // Uyarı elementi zaten varsa kaldır
             const existingWarning = document.querySelector('.wei-ye-jump-warning');
             if (existingWarning) {
                 existingWarning.parentNode.removeChild(existingWarning);
             }
-            
+
             // Uyarı elementi oluştur
             const warning = L.DomUtil.create('div', 'wei-ye-jump-warning');
             warning.innerHTML = `GPS Sıçraması Tespit Edildi (${Math.round(distance)}m)`;
             document.body.appendChild(warning);
-            
+
             // 3 saniye sonra kaldır
             setTimeout(() => {
                 if (warning.parentNode) {
@@ -408,15 +451,15 @@
                 }
             }, 3000);
         },
-        
+
         // Ham ve filtrelenmiş konumları görselleştir (opsiyonel)
-        _visualizeFiltering: function() {
+        _visualizeFiltering: function () {
             const state = this._weiYeState;
-            
+
             if (!state.lastRawPosition || !state.lastFilteredPosition) {
                 return;
             }
-            
+
             // Ham konum göstergesi
             if (!this._rawPositionMarker) {
                 this._rawPositionMarker = L.circleMarker(
@@ -431,7 +474,7 @@
             } else {
                 this._rawPositionMarker.setLatLng([state.lastRawPosition.latitude, state.lastRawPosition.longitude]);
             }
-            
+
             // Sıçrama tespit edildiğinde gösterge çizgisi
             if (state.isJumpDetected) {
                 const jumpLine = L.polyline([
@@ -443,7 +486,7 @@
                     weight: 2,
                     opacity: 0.7
                 }).addTo(this._map);
-                
+
                 // 3 saniye sonra çizgiyi kaldır
                 setTimeout(() => {
                     if (jumpLine && this._map) {
@@ -489,14 +532,14 @@
             if (!this._angle) return null;
             return this._angle;
         },
-        
+
         // Filtreleme istatistiklerini al
-        getFilteringStats: function() {
+        getFilteringStats: function () {
             return this._weiYeState.filteringStats;
         },
-        
+
         // Filtrelemeyi etkinleştir/devre dışı bırak
-        setFilteringEnabled: function(enabled) {
+        setFilteringEnabled: function (enabled) {
             this.options.enableFiltering = enabled;
             return this;
         },
@@ -519,7 +562,7 @@
                     this._orientation = undefined;
                     this._updateButton();
                     this._map.off("layeradd", this._onLayerAdd, this);
-                    
+
                     // Filtreleme verilerini sıfırla
                     this._resetFilters();
                 }
@@ -566,21 +609,21 @@
                 }, this.options.clickTimeoutDelay);
             }
         },
-        
+
         // Filtreleme verilerini sıfırla
-        _resetFilters: function() {
+        _resetFilters: function () {
             // Median filtre verilerini sıfırla
             this._medianFilter.latHistory = [];
             this._medianFilter.lngHistory = [];
             this._medianFilter.accuracyHistory = [];
             this._medianFilter.timestampHistory = [];
-            
+
             // Kalman filtre verilerini sıfırla
             this._kalmanFilter.x_lat = null;
             this._kalmanFilter.x_lng = null;
             this._kalmanFilter.P_lat = null;
             this._kalmanFilter.P_lng = null;
-            
+
             // Wei Ye durumunu sıfırla
             this._weiYeState.lastFilteredPosition = null;
             this._weiYeState.lastRawPosition = null;
@@ -590,7 +633,7 @@
                 jumpsDetected: 0,
                 maxJumpDistance: 0
             };
-            
+
             // Debug görsellerini kaldır
             if (this._rawPositionMarker && this._map) {
                 this._map.removeLayer(this._rawPositionMarker);
@@ -682,20 +725,20 @@
         _onLocationFound: function (event) {
             // Wei Ye algoritması ile konumu filtrele
             const filteredPosition = this._applyWeiYeFilter(event);
-            
+
             // Önceki filtrelenmiş konumla aynıysa güncelleme yapma (micro değişiklikleri engelle)
-            if (this._latitude && filteredPosition.latitude && 
+            if (this._latitude && filteredPosition.latitude &&
                 Math.round(this._latitude * 1000000) === Math.round(filteredPosition.latitude * 1000000) &&
-                this._longitude && filteredPosition.longitude && 
+                this._longitude && filteredPosition.longitude &&
                 Math.round(this._longitude * 1000000) === Math.round(filteredPosition.longitude * 1000000) &&
-                this._accuracy && filteredPosition.accuracy && 
+                this._accuracy && filteredPosition.accuracy &&
                 Math.round(this._accuracy * 100) === Math.round(filteredPosition.accuracy * 100)) return;
-            
+
             // Filtrelenmiş değerleri kaydet
             this._latitude = filteredPosition.latitude;
             this._longitude = filteredPosition.longitude;
             this._accuracy = filteredPosition.accuracy;
-            
+
             // Marker'ı güncelle
             this._updateMarker();
         },
@@ -795,7 +838,7 @@
             if (this._circle) {
                 this._circle.setLatLng([this._latitude, this._longitude]);
                 this._circle.setRadius(this._accuracy);
-                
+
                 // Doğruluk düzeyine göre dairenin stilini ayarla
                 const accuracyColor = this._getAccuracyColor(this._accuracy);
                 this._circle.setStyle({
@@ -804,7 +847,7 @@
                     fillOpacity: 0.2,
                     opacity: 0.5
                 });
-                
+
                 // Sıçrama tespit edildiyse visual feedback
                 if (this._weiYeState.isJumpDetected) {
                     this._circle.setStyle({
@@ -812,7 +855,7 @@
                         fillOpacity: 0.3,
                         opacity: 0.8
                     });
-                    
+
                     // Birkaç saniye sonra normale döndür
                     setTimeout(() => {
                         if (this._circle) {
@@ -824,7 +867,7 @@
                         }
                     }, 2000);
                 }
-                
+
             } else if (this.options.drawCircle) {
                 this._circle = L.circle([this._latitude, this._longitude], {
                     className: "leaflet-simple-locate-circle",
@@ -849,9 +892,9 @@
                 this._marker.addTo(this._map);
             }
         },
-        
+
         // Doğruluk değerine göre renk döndür
-        _getAccuracyColor: function(accuracy) {
+        _getAccuracyColor: function (accuracy) {
             if (accuracy <= 5) {
                 return '#4CAF50'; // İyi doğruluk - Yeşil
             } else if (accuracy <= 15) {
@@ -862,24 +905,24 @@
                 return '#F44336'; // Çok düşük doğruluk - Kırmızı
             }
         },
-        
+
         // Uzun süreli hareketsizlik tespiti (opsiyonel)
-        _detectStationaryState: function() {
+        _detectStationaryState: function () {
             const m = this._medianFilter;
-            
+
             // Geçmiş penceresinde yeterli veri yoksa, durağan değil
             if (m.latHistory.length < m.windowSize) {
                 return false;
             }
-            
+
             // Penceredeki ilk ve son konum arasındaki farkı hesapla
             const firstLat = m.latHistory[0];
             const firstLng = m.lngHistory[0];
             const lastLat = m.latHistory[m.latHistory.length - 1];
             const lastLng = m.lngHistory[m.lngHistory.length - 1];
-            
+
             const distance = L.latLng(firstLat, firstLng).distanceTo(L.latLng(lastLat, lastLng));
-            
+
             // 5 metreden az hareket olduysa, durağan kabul et
             return distance < 5;
         }
@@ -891,5 +934,3 @@
 
     return SimpleLocate;
 });
-
-

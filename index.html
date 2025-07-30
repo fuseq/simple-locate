@@ -94,38 +94,28 @@
         const control = new L.Control.SimpleLocate({
             position: "topleft",
 
-            // Wei Ye algoritması ayarları
-            medianWindowSize: 7,          // Son 7 konumu pencerede tut
-            kalmanProcessNoise: 0.01,     // Daha düşük = daha yavaş takip ama daha stabil
-            kalmanMeasurementNoise: 0.1,  // Daha yüksek = ölçümlere daha az güven
-            jumpThreshold: 0.0001,        // Sıçrama tespiti eşiği (~10-20m)
-            showFilterInfo: true,         // Konsola filtreleme bilgisi yaz
-            enableFiltering: true,        // Filtrelemeyi aktif et
-            showFilterDebug: false,       // Raw ve filtered konumları göster (debug için)
-            showJumpWarnings: true,       // Sıçrama uyarılarını göster
+            // Wei Ye algoritması optimize edilmiş ayarları
+            medianWindowSize: 5,          // Daha küçük pencere boyutu = daha hızlı tepki
+            kalmanProcessNoise: 0.03,     // Daha yüksek Q değeri = daha hızlı tepki
+            kalmanMeasurementNoise: 0.08, // Daha düşük R değeri = daha fazla güven
+            jumpThreshold: 0.00005,       // Yaklaşık 5 metrelik sıçramayı tespit et
+            showFilterInfo: false,        // Performans için konsol loglarını kapat
+            enableFiltering: true,        // Filtrelemeyi etkinleştir
+            showFilterDebug: false,       // Debug görsellerini kapat (performans için)
+            showJumpWarnings: true,       // Büyük sıçramalar için uyarıları göster
 
             afterDeviceMove: (location) => {
                 // Bu fonksiyon, konum her değiştiğinde çağrılır
-                // location artık Wei Ye algoritması ile filtrelenmiş veriyi içerir
                 let lat = location.lat;
                 let lng = location.lng;
                 let accuracy = location.accuracy;
                 let angle = location.angle;
 
-                console.log("Filtrelenmiş Konum:", lat, lng);
-                console.log("Doğruluk:", accuracy);
-
-                // Filter istatistiklerini göster (isteğe bağlı)
-                if (location.filterStats) {
-                    const stats = location.filterStats;
-                    console.log(`Filtre İstatistikleri: ${stats.jumpsDetected}/${stats.totalUpdates} sıçrama (max: ${Math.round(stats.maxJumpDistance)}m)`);
-                }
-
-                // Düşük doğruluk için uyarı gösterimi (isteğe bağlı)
-                if (accuracy > 30 && !window.accuracyWarningShown) {
-                    showPopup("⚠️ Düşük konum doğruluğu", "orange");
+                // GPS doğruluğu düşükse uyarı göster (opsiyonel - performans için kapatılabilir)
+                if (accuracy > 50 && !window.accuracyWarningShown) {
+                    showPopup("⚠️ Düşük GPS doğruluğu", "orange");
                     window.accuracyWarningShown = true;
-                    setTimeout(() => { window.accuracyWarningShown = false; }, 10000);
+                    setTimeout(() => { window.accuracyWarningShown = false; }, 15000); // 15 saniye bekle
                 }
 
                 // altitude bilgisi SimpleLocate'den doğrudan gelmiyor, 
@@ -149,6 +139,7 @@
                     updateUserPosition(mockPosition);
                 }
             },
+
             afterClick: (status) => {
                 console.log("Geolocation status:", status.geolocation);
                 console.log("Orientation status:", status.orientation);
@@ -159,10 +150,18 @@
         }).addTo(map);
 
         // Wei Ye Algoritması UI kontrolü oluştur (İsteğe Bağlı)
+        // Wei Ye Algoritması + Kapı Bilgisi UI kontrolü
         function createWeiYeInfoControl() {
             const weiYeInfoControl = L.Control.extend({
                 options: {
-                    position: 'topright' // bottomright yerine topright
+                    position: 'topright'
+                },
+
+                // Kapı bilgisi verileri
+                _doorInfo: {
+                    doorId: null,
+                    distance: null,
+                    floor: null
                 },
 
                 onAdd: function (map) {
@@ -171,33 +170,66 @@
                     // Mobil mi kontrol et
                     const isMobile = window.innerWidth <= 640;
 
+                    // Panel içeriğini oluştur (kapı bilgisi dahil)
+                    this._updateContent();
+
+                    L.DomEvent.disableClickPropagation(this._container);
+                    return this._container;
+                },
+
+                // Panel içeriğini güncelle
+                _updateContent: function () {
+                    // Mobil mi kontrol et
+                    const isMobile = window.innerWidth <= 640;
+
+                    // Kapı bilgisi HTML'i
+                    let doorHtml = '';
+                    if (this._doorInfo.doorId) {
+                        doorHtml = `
+                    <div class="wei-ye-door-info">
+                        <div>En Yakın: <span class="door-name">${this._doorInfo.doorId}</span> 
+                        <span class="door-distance">${Math.round(this._doorInfo.distance)}m</span></div>
+                        ${this._doorInfo.floor !== null ? `<div>Kat: ${this._doorInfo.floor}</div>` : ''}
+                    </div>
+                `;
+                    } else {
+                        doorHtml = `
+                    <div class="wei-ye-door-info">
+                        <div class="no-door">Kapı bilgisi bekleniyor...</div>
+                    </div>
+                `;
+                    }
+
                     // Mobil cihazlarda daha kompakt içerik
                     if (isMobile) {
                         this._container.innerHTML = `
                     <div class="wei-ye-info-panel">
-                        <div class="wei-ye-title">Konum Filtresi</div>
+                        <div class="wei-ye-title">Konum Bilgisi</div>
                         <div class="wei-ye-stats">
                             <div>Doğruluk: <span class="accuracy-value">--</span>m</div>
                         </div>
+                        ${doorHtml}
                     </div>
                 `;
                     } else {
                         // Masaüstü için tam içerik
                         this._container.innerHTML = `
                     <div class="wei-ye-info-panel">
-                        <div class="wei-ye-title">Konum Filtresi: Aktif</div>
+                        <div class="wei-ye-title">
+                            Konum Bilgisi
+                            <small style="opacity: 0.7; font-weight: normal; font-size: 90%;">Filtrelenmiş</small>
+                        </div>
                         <div class="wei-ye-stats">
                             <div>Doğruluk: <span class="accuracy-value">--</span> m</div>
                             <div>Durum: <span class="is-filtered">Bekleniyor</span></div>
                         </div>
+                        ${doorHtml}
                     </div>
                 `;
                     }
-
-                    L.DomEvent.disableClickPropagation(this._container);
-                    return this._container;
                 },
 
+                // Konum filtreleme istatistikleri güncelleme
                 updateStats: function (stats) {
                     const accuracyEl = this._container.querySelector('.accuracy-value');
                     const filteredEl = this._container.querySelector('.is-filtered');
@@ -233,6 +265,14 @@
                             filteredEl.style.color = '#4CAF50';
                         }
                     }
+                },
+
+                // Kapı bilgilerini güncelle
+                updateDoorInfo: function (doorInfo) {
+                    if (doorInfo) {
+                        this._doorInfo = doorInfo;
+                        this._updateContent();
+                    }
                 }
             });
 
@@ -241,11 +281,16 @@
 
             // Pencere boyutu değiştiğinde yeniden oluştur
             window.addEventListener('resize', () => {
+                const doorInfo = weiYeInfo._doorInfo; // Mevcut kapı bilgisini kaydet
                 map.removeControl(weiYeInfo);
                 const newWeiYeInfo = new weiYeInfoControl().addTo(map);
+                newWeiYeInfo._doorInfo = doorInfo; // Kapı bilgisini geri yükle
+                newWeiYeInfo._updateContent(); // İçeriği güncelle
 
                 // Referansı güncelle
                 weiYeInfo._container = newWeiYeInfo._container;
+                weiYeInfo._doorInfo = newWeiYeInfo._doorInfo;
+                weiYeInfo._updateContent = newWeiYeInfo._updateContent;
             });
 
             // SimpleLocate kontrolüne afterDeviceMove callbacki eklenmişse buradan bilgileri güncelle
@@ -298,10 +343,22 @@
             }
         }
 
-        // Function to find the closest door
+
+        // En yakın kapıyı bulma fonksiyonu
         function findClosestLine(lat, lng, linesArray) {
             let closestLine = null;
             let minDistance = Infinity;
+            let currentFloor = null; // Mevcut kat bilgisini ekle
+
+            // Altitude bilgisine göre kat belirle
+            // NOT: Bu kısmı kendi altitude-floor mantığınıza göre güncellemelisiniz
+            if (typeof currentAltitude !== 'undefined') {
+                if (currentAltitude >= floorsAltitude[0] && currentAltitude < floorsAltitude[1]) {
+                    currentFloor = 0;
+                } else if (currentAltitude >= floorsAltitude[1]) {
+                    currentFloor = 1;
+                }
+            }
 
             linesArray.forEach(line => {
                 const startDist = map.distance([lat, lng], [line.start.lat, line.start.lng]);
@@ -314,11 +371,17 @@
                 }
             });
 
-            // If a closest line is found, display the result
+            // En yakın kapı bulunduysa Wei Ye kontrol paneline ekle
             if (closestLine) {
-                showPopup(`En Yakın Kapı: ${closestLine.id}`, "blue");
+                weiYeInfoControl.updateDoorInfo({
+                    doorId: closestLine.id,
+                    distance: minDistance,
+                    floor: currentFloor
+                });
+                return closestLine;
             } else {
-                showPopup("Kapı Bulunamadı", "orange");
+                weiYeInfoControl.updateDoorInfo(null);
+                return null;
             }
         }
 
