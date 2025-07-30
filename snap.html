@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <title>Gerçek Konum Map Matching Testi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+    <!-- Turf.js for spatial calculations -->
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+        .controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            max-width: 250px;
+        }
+        .controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        .controls button {
+            width: 100%;
+            margin-bottom: 5px;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            background: #2196F3;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .controls button:hover {
+            background: #0b7dda;
+        }
+        .controls .option-group {
+            margin-bottom: 10px;
+        }
+        .controls label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .controls input[type="range"] {
+            width: 100%;
+        }
+        .controls .value {
+            float: right;
+            font-size: 12px;
+            color: #666;
+        }
+        .feature-info {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.9);
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+            max-width: 300px;
+        }
+        .feature-info h4 {
+            margin: 0 0 5px 0;
+            font-size: 14px;
+        }
+        .feature-info p {
+            margin: 5px 0;
+            line-height: 1.4;
+        }
+        .highlight {
+            font-weight: bold;
+            color: #2196F3;
+        }
+        
+        /* Yollar için stiller */
+        .path {
+            stroke: #4CAF50;
+            stroke-width: 5;
+            stroke-opacity: 0.8;
+        }
+        
+        /* Ham ve eşleştirilmiş konum stilleri */
+        .raw-position {
+            stroke: #F44336;
+            stroke-width: 1;
+            stroke-opacity: 0.8;
+            fill: #F44336;
+            fill-opacity: 0.4;
+        }
+        .matched-position {
+            stroke: #2196F3;
+            stroke-width: 2;
+            stroke-opacity: 1;
+            fill: #2196F3;
+            fill-opacity: 0.6;
+        }
+        .snapped-line {
+            stroke: #FF9800;
+            stroke-width: 2;
+            stroke-dasharray: 5, 5;
+            stroke-opacity: 0.8;
+        }
+        
+        /* Kullanıcının izlediği hat için stil */
+        .user-track {
+            stroke: #9C27B0;
+            stroke-width: 3;
+            stroke-opacity: 0.7;
+        }
+        
+        /* Durum bildirimi */
+        .status {
+            position: fixed;
+            top: 80px;
+            right: 10px;
+            z-index: 1000;
+            background: #4CAF50;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .status.error {
+            background: #F44336;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    
+    <div class="controls">
+        <h3>Map Matching Test</h3>
+        
+        <div class="option-group">
+            <label>Snapping Mesafesi <span class="value" id="snapDistanceValue">15m</span></label>
+            <input type="range" id="snapDistance" min="1" max="50" value="15">
+        </div>
+        
+        <div class="option-group">
+            <button id="toggleRawPosition">Ham GPS Göster/Gizle</button>
+            <button id="toggleTracking">Konum Takibini Başlat</button>
+            <button id="clearTrack">İzleri Temizle</button>
+            <button id="centerMap">Konuma Merkezle</button>
+        </div>
+    </div>
+    
+    <div class="feature-info">
+        <h4>Map Matching Bilgileri</h4>
+        <p>Konum: <span id="position" class="highlight">-</span></p>
+        <p>En Yakın Yol: <span id="nearestLine" class="highlight">-</span></p>
+        <p>Uzaklık: <span id="distance" class="highlight">-</span> metre</p>
+        <p>Snapped Konum: <span id="snappedPosition" class="highlight">-</span></p>
+    </div>
+    
+    <script>
+        // Başlangıç konumu (verdiğiniz koordinatlar)
+        const initialCoords = [37.425947, 31.852208];
+        
+        // Leaflet haritasını oluştur
+        const map = L.map('map', {
+            center: initialCoords,
+            zoom: 19,
+            maxZoom: 22
+        });
+        
+        // OpenStreetMap altlık haritasını ekle
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+        
+        // Verdiğiniz ana yol koordinatları
+        const mainPath = [
+            [37.425947, 31.852208],
+            [37.425855, 31.852246]
+        ];
+        
+        // Ana yolla birleşen iki ek yol
+        // 1. Birinci yol - Ana yolun başlangıcından uzanan
+        const path1 = [
+            [37.425947, 31.852208],  // Ana yolun başlangıcı
+            [37.426020, 31.852170],  // Kuzeybatı yönü
+            [37.426080, 31.852140]   // Daha uzak nokta
+        ];
+        
+        // 2. İkinci yol - Ana yolun sonundan uzanan
+        const path2 = [
+            [37.425855, 31.852246],  // Ana yolun sonu
+            [37.425800, 31.852300],  // Güneydoğu yönü
+            [37.425750, 31.852350]   // Daha uzak nokta
+        ];
+        
+        // Tüm yolları bir dizide topla
+        const allPaths = [
+            { id: 'ana-yol', coords: mainPath },
+            { id: 'yan-yol-1', coords: path1 },
+            { id: 'yan-yol-2', coords: path2 }
+        ];
+        
+        // Yolları haritaya ekle
+        allPaths.forEach(path => {
+            const line = L.polyline(path.coords, {
+                className: 'path',
+                id: path.id
+            }).addTo(map);
+            
+            // Yol bilgisini objeye ekle
+            path.line = line;
+        });
+        
+        // Kullanıcının konumunu temsil eden değişkenler
+        let userPositionMarker = null;
+        let rawPositionMarker = null;
+        let snappedLine = null;
+        let userTrack = null;
+        let userTrackPositions = [];
+        let watchId = null;
+        let isTracking = false;
+        
+        // UI elemanları
+        const snapDistanceSlider = document.getElementById('snapDistance');
+        const snapDistanceValue = document.getElementById('snapDistanceValue');
+        const toggleRawPositionBtn = document.getElementById('toggleRawPosition');
+        const toggleTrackingBtn = document.getElementById('toggleTracking');
+        const clearTrackBtn = document.getElementById('clearTrack');
+        const centerMapBtn = document.getElementById('centerMap');
+        
+        // Bilgi paneli elemanları
+        const positionElement = document.getElementById('position');
+        const nearestLineElement = document.getElementById('nearestLine');
+        const distanceElement = document.getElementById('distance');
+        const snappedPositionElement = document.getElementById('snappedPosition');
+        
+        // Başlangıç ayarları
+        let showRawPosition = true;
+        let snapDistance = parseInt(snapDistanceSlider.value);
+        
+        // Slider değerlerini izle
+        snapDistanceSlider.addEventListener('input', (e) => {
+            snapDistance = parseInt(e.target.value);
+            snapDistanceValue.textContent = `${snapDistance}m`;
+            
+            // Eğer aktif bir konum varsa, yeni snap mesafesine göre güncelle
+            if (userPositionMarker) {
+                const latlng = userPositionMarker.getLatLng();
+                updatePositionWithMatching(latlng.lat, latlng.lng);
+            }
+        });
+        
+        // Buton tıklama olaylarını izle
+        toggleRawPositionBtn.addEventListener('click', () => {
+            showRawPosition = !showRawPosition;
+            if (rawPositionMarker) {
+                if (showRawPosition) {
+                    rawPositionMarker.addTo(map);
+                } else {
+                    map.removeLayer(rawPositionMarker);
+                }
+            }
+        });
+        
+        toggleTrackingBtn.addEventListener('click', () => {
+            if (isTracking) {
+                stopTracking();
+                toggleTrackingBtn.textContent = 'Konum Takibini Başlat';
+                showStatus('Konum takibi durduruldu', false);
+            } else {
+                startTracking();
+                toggleTrackingBtn.textContent = 'Konum Takibini Durdur';
+            }
+        });
+        
+        clearTrackBtn.addEventListener('click', () => {
+            clearUserTrack();
+            showStatus('İzler temizlendi', false);
+        });
+        
+        centerMapBtn.addEventListener('click', () => {
+            if (userPositionMarker) {
+                map.setView(userPositionMarker.getLatLng(), 19);
+                showStatus('Harita konuma merkezlendi', false);
+            } else {
+                showStatus('Konum bulunamadı!', true);
+            }
+        });
+        
+        // Konum takibi başlatma
+        function startTracking() {
+            if (!navigator.geolocation) {
+                showStatus('Tarayıcınız konum hizmetini desteklemiyor!', true);
+                return;
+            }
+            
+            isTracking = true;
+            
+            showStatus('Konum alınıyor...', false);
+            
+            // Konum izlemeyi başlat
+            watchId = navigator.geolocation.watchPosition(
+                // Başarılı konum alımı
+                (position) => {
+                    const { latitude, longitude, accuracy } = position.coords;
+                    
+                    // Konumu map matching ile güncelle
+                    updatePositionWithMatching(latitude, longitude, accuracy);
+                    
+                    // Haritayı ilk konumda merkezle
+                    if (!userPositionMarker) {
+                        map.setView([latitude, longitude], 19);
+                    }
+                    
+                    showStatus(`Konum alındı (±${Math.round(accuracy)}m)`, false);
+                },
+                // Konum hatası
+                (error) => {
+                    let errorMsg = 'Konum alınamadı';
+                    
+                    switch (error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMsg = 'Konum izni reddedildi';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMsg = 'Konum bilgisi kullanılamıyor';
+                            break;
+                        case error.TIMEOUT:
+                            errorMsg = 'Konum alımı zaman aşımına uğradı';
+                            break;
+                    }
+                    
+                    showStatus(errorMsg, true);
+                    stopTracking();
+                    toggleTrackingBtn.textContent = 'Konum Takibini Başlat';
+                },
+                // Konum seçenekleri
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 0,
+                    timeout: 5000
+                }
+            );
+        }
+        
+        // Konum takibi durdurma
+        function stopTracking() {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                isTracking = false;
+            }
+        }
+        
+        // Konumu Map Matching ile güncelleme
+        function updatePositionWithMatching(lat, lng, accuracy) {
+            // Ham konum için marker oluştur/güncelle
+            if (rawPositionMarker) {
+                rawPositionMarker.setLatLng([lat, lng]);
+            } else {
+                rawPositionMarker = L.circleMarker([lat, lng], {
+                    radius: 5,
+                    className: 'raw-position'
+                });
+                
+                if (showRawPosition) {
+                    rawPositionMarker.addTo(map);
+                }
+            }
+            
+            // Map matching uygula - en yakın yola snap'le
+            const matchedResult = snapToNearestPath(lat, lng);
+            
+            // Eşleştirilmiş konum için marker oluştur/güncelle
+            if (userPositionMarker) {
+                userPositionMarker.setLatLng([matchedResult.snappedPosition.lat, matchedResult.snappedPosition.lng]);
+            } else {
+                userPositionMarker = L.circleMarker(
+                    [matchedResult.snappedPosition.lat, matchedResult.snappedPosition.lng],
+                    {
+                        radius: 8,
+                        className: 'matched-position'
+                    }
+                ).addTo(map);
+            }
+            
+            // Ham konum ile eşleştirilmiş konum arasında çizgi
+            if (snappedLine) {
+                map.removeLayer(snappedLine);
+            }
+            
+            // Sadece snap edilmiş konum farklıysa çizgiyi göster
+            if (lat !== matchedResult.snappedPosition.lat || lng !== matchedResult.snappedPosition.lng) {
+                snappedLine = L.polyline(
+                    [
+                        [lat, lng],
+                        [matchedResult.snappedPosition.lat, matchedResult.snappedPosition.lng]
+                    ],
+                    { className: 'snapped-line' }
+                ).addTo(map);
+            }
+            
+            // Bilgi panelini güncelle
+            positionElement.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+            nearestLineElement.textContent = matchedResult.nearestLine ? matchedResult.nearestLine.id : '-';
+            distanceElement.textContent = matchedResult.distance.toFixed(2);
+            snappedPositionElement.textContent = 
+                `${matchedResult.snappedPosition.lat.toFixed(6)}, ${matchedResult.snappedPosition.lng.toFixed(6)}`;
+            
+            // Kullanıcı izini güncelle
+            updateUserTrack(matchedResult.snappedPosition.lat, matchedResult.snappedPosition.lng);
+        }
+        
+        // Konum verisini en yakın yola snap'leme fonksiyonu
+        function snapToNearestPath(lat, lng) {
+            let minDistance = Infinity;
+            let nearestLine = null;
+            let snappedPosition = null;
+            
+            // Tüm yolları kontrol et
+            allPaths.forEach(path => {
+                const pathCoords = path.coords;
+                
+                // Her yol parçasını kontrol et
+                for (let i = 0; i < pathCoords.length - 1; i++) {
+                    const start = L.latLng(pathCoords[i]);
+                    const end = L.latLng(pathCoords[i + 1]);
+                    
+                    // Turf.js ile nokta-doğru parçası mesafesini hesapla
+                    const point = turf.point([lng, lat]);
+                    const line = turf.lineString([
+                        [start.lng, start.lat],
+                        [end.lng, end.lat]
+                    ]);
+                    
+                    const nearestPoint = turf.nearestPointOnLine(line, point);
+                    const distance = nearestPoint.properties.dist * 1000; // km'den m'ye çevir
+                    
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        nearestLine = path;
+                        snappedPosition = { 
+                            lat: nearestPoint.geometry.coordinates[1], 
+                            lng: nearestPoint.geometry.coordinates[0] 
+                        };
+                    }
+                }
+            });
+            
+            // Snap mesafesi kullanıcının belirlediği limiti aşıyorsa,
+            // orijinal konumu kullan
+            if (minDistance > snapDistance) {
+                snappedPosition = { lat, lng };
+                console.log(`Snap mesafesi çok uzak: ${minDistance.toFixed(2)}m > ${snapDistance}m`);
+            }
+            
+            return {
+                originalPosition: { lat, lng },
+                nearestLine: nearestLine,
+                distance: minDistance,
+                snappedPosition: snappedPosition
+            };
+        }
+        
+        // Kullanıcı izini güncelleme
+        function updateUserTrack(lat, lng) {
+            // Yeni koordinatı ekle
+            userTrackPositions.push([lat, lng]);
+            
+            // Eski izi kaldır
+            if (userTrack) {
+                map.removeLayer(userTrack);
+            }
+            
+            // Yeni izi çiz (en az 2 nokta gerekli)
+            if (userTrackPositions.length > 1) {
+                userTrack = L.polyline(userTrackPositions, {
+                    className: 'user-track'
+                }).addTo(map);
+            }
+        }
+        
+        // Kullanıcı izini temizleme
+        function clearUserTrack() {
+            userTrackPositions = [];
+            if (userTrack) {
+                map.removeLayer(userTrack);
+                userTrack = null;
+            }
+        }
+        
+        // Durum mesajı gösterme
+        function showStatus(message, isError) {
+            // Mevcut durum mesajını kaldır
+            const existingStatus = document.querySelector('.status');
+            if (existingStatus) {
+                existingStatus.remove();
+            }
+            
+            // Yeni durum mesajı oluştur
+            const statusDiv = document.createElement('div');
+            statusDiv.className = isError ? 'status error' : 'status';
+            statusDiv.textContent = message;
+            document.body.appendChild(statusDiv);
+            
+            // 3 saniye sonra mesajı kaldır
+            setTimeout(() => {
+                if (statusDiv.parentNode) {
+                    statusDiv.remove();
+                }
+            }, 3000);
+        }
+        
+        // Harita üzerinde tıklama ile konum test edebilme
+        map.on('click', (e) => {
+            if (!isTracking) {
+                // Takip modunda değilse, tıklanan noktayı test et
+                updatePositionWithMatching(e.latlng.lat, e.latlng.lng);
+                showStatus('Test konumu ayarlandı', false);
+            }
+        });
+        
+        // Sayfa yüklendiğinde haritayı hazırla
+        window.addEventListener('load', () => {
+            // Haritayı belirtilen koordinatlara merkezle
+            map.setView(initialCoords, 19);
+            
+            // Başlangıç bilgilerini göster
+            showStatus('Yollar yüklendi. Konum takibini başlatın veya haritaya tıklayın.', false);
+        });
+    </script>
+</body>
+</html>
