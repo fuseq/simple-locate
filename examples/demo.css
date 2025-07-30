@@ -1,3 +1,5 @@
+/*.............................................................................*/
+/* Bu bölüm dosyanın mevcut içeriğini korur */
 /*
  * Leaflet.SimpleLocate v1.0.4 - 2024-6-15
  *
@@ -126,8 +128,7 @@
     cursor: pointer;
 }
 
-
-
+/* Düşük doğruluk göstergeleri */
 .leaflet-simple-locate-circle-low-accuracy {
     stroke: #ff6666 !important; /* Kırmızı kenar */
     fill: rgba(255, 102, 102, 0.2) !important; /* Kırmızı dolgu */
@@ -140,4 +141,67 @@
     0% { opacity: 0.7; }
     50% { opacity: 0.3; }
     100% { opacity: 0.7; }
+}
+
+/* Wei Ye Algoritması (Sıçrama Tespiti) için yeni stiller */
+.wei-ye-jump-warning {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: rgba(255, 87, 34, 0.9);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    font-weight: bold;
+    z-index: 1000;
+    pointer-events: none;
+    animation: fadeInOut 2s ease-in-out;
+}
+
+@keyframes fadeInOut {
+    0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
+    20% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    80% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+}
+
+/* Wei Ye Bilgi Kontrol Paneli */
+.leaflet-control-wei-ye-info {
+    padding: 6px 8px;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+    margin-bottom: 10px;
+}
+
+.wei-ye-title {
+    font-weight: bold;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.wei-ye-stats {
+    font-size: 11px;
+}
+
+.accuracy-value, .is-filtered {
+    font-weight: bold;
+}
+
+.accuracy-good {
+    color: #4CAF50;
+}
+
+.accuracy-medium {
+    color: #FFC107;
+}
+
+.accuracy-low {
+    color: #FF9800;
+}
+
+.accuracy-poor {
+    color: #F44336;
 }

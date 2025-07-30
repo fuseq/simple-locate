@@ -93,23 +93,47 @@
 
         const control = new L.Control.SimpleLocate({
             position: "topleft",
+
+            // Wei Ye algoritması ayarları
+            medianWindowSize: 7,          // Son 7 konumu pencerede tut
+            kalmanProcessNoise: 0.01,     // Daha düşük = daha yavaş takip ama daha stabil
+            kalmanMeasurementNoise: 0.1,  // Daha yüksek = ölçümlere daha az güven
+            jumpThreshold: 0.0001,        // Sıçrama tespiti eşiği (~10-20m)
+            showFilterInfo: true,         // Konsola filtreleme bilgisi yaz
+            enableFiltering: true,        // Filtrelemeyi aktif et
+            showFilterDebug: false,       // Raw ve filtered konumları göster (debug için)
+            showJumpWarnings: true,       // Sıçrama uyarılarını göster
+
             afterDeviceMove: (location) => {
                 // Bu fonksiyon, konum her değiştiğinde çağrılır
+                // location artık Wei Ye algoritması ile filtrelenmiş veriyi içerir
                 let lat = location.lat;
                 let lng = location.lng;
-                let accuracy = location.accuracy; // Konum doğruluğu
-                let angle = location.angle; // Cihaz yönü (varsa)
-                
-                console.log("Latitude:", lat);
-                console.log("Longitude:", lng);
-                console.log("Accuracy:", accuracy);
-                
+                let accuracy = location.accuracy;
+                let angle = location.angle;
+
+                console.log("Filtrelenmiş Konum:", lat, lng);
+                console.log("Doğruluk:", accuracy);
+
+                // Filter istatistiklerini göster (isteğe bağlı)
+                if (location.filterStats) {
+                    const stats = location.filterStats;
+                    console.log(`Filtre İstatistikleri: ${stats.jumpsDetected}/${stats.totalUpdates} sıçrama (max: ${Math.round(stats.maxJumpDistance)}m)`);
+                }
+
+                // Düşük doğruluk için uyarı gösterimi (isteğe bağlı)
+                if (accuracy > 30 && !window.accuracyWarningShown) {
+                    showPopup("⚠️ Düşük konum doğruluğu", "orange");
+                    window.accuracyWarningShown = true;
+                    setTimeout(() => { window.accuracyWarningShown = false; }, 10000);
+                }
+
                 // altitude bilgisi SimpleLocate'den doğrudan gelmiyor, 
                 // yaklaşık bir değer belirleyebiliriz (floorsAltitude değerlerine göre)
                 let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
-                
+
                 checkLocation(lat, lng, altitude);
-                
+
                 // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
                 if (typeof updateUserPosition === 'function') {
                     // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
@@ -119,7 +143,8 @@
                             longitude: lng,
                             accuracy: accuracy,
                             altitude: altitude
-                        }
+                        },
+                        timestamp: Date.now()
                     };
                     updateUserPosition(mockPosition);
                 }
@@ -132,6 +157,90 @@
                 }
             }
         }).addTo(map);
+
+        function createWeiYeInfoControl() {
+            const weiYeInfoControl = L.Control.extend({
+                options: {
+                    position: 'bottomright'
+                },
+
+                onAdd: function (map) {
+                    this._container = L.DomUtil.create('div', 'leaflet-control leaflet-control-wei-ye-info');
+                    this._container.innerHTML = `
+                <div class="wei-ye-info-panel">
+                    <div class="wei-ye-title">Konum Filtresi: Aktif</div>
+                    <div class="wei-ye-stats">
+                        <div>Doğruluk: <span class="accuracy-value">--</span> m</div>
+                        <div>Durum: <span class="is-filtered">Bekleniyor</span></div>
+                    </div>
+                </div>
+            `;
+
+                    L.DomEvent.disableClickPropagation(this._container);
+                    return this._container;
+                },
+
+                updateStats: function (stats) {
+                    const accuracyEl = this._container.querySelector('.accuracy-value');
+                    const filteredEl = this._container.querySelector('.is-filtered');
+
+                    if (accuracyEl && stats.accuracy) {
+                        accuracyEl.textContent = Math.round(stats.accuracy);
+
+                        // Doğruluk değerine göre renk değiştir
+                        if (stats.accuracy <= 5) {
+                            accuracyEl.className = 'accuracy-value accuracy-good';
+                        } else if (stats.accuracy <= 15) {
+                            accuracyEl.className = 'accuracy-value accuracy-medium';
+                        } else if (stats.accuracy <= 30) {
+                            accuracyEl.className = 'accuracy-value accuracy-low';
+                        } else {
+                            accuracyEl.className = 'accuracy-value accuracy-poor';
+                        }
+                    }
+
+                    if (filteredEl) {
+                        if (stats.isJump) {
+                            filteredEl.textContent = "Sıçrama düzeltildi";
+                            filteredEl.style.color = '#FF5722';
+
+                            // 2 saniye sonra sıfırla
+                            setTimeout(() => {
+                                filteredEl.textContent = "Normal";
+                                filteredEl.style.color = '#4CAF50';
+                            }, 2000);
+                        } else if (!stats.initializing) {
+                            filteredEl.textContent = "Normal";
+                            filteredEl.style.color = '#4CAF50';
+                        }
+                    }
+                }
+            });
+
+            // Kontrol oluştur ve ekle
+            const weiYeInfo = new weiYeInfoControl().addTo(map);
+
+            // SimpleLocate kontrolüne afterDeviceMove callbacki eklenmişse buradan bilgileri güncelle
+            const originalAfterDeviceMove = control.options.afterDeviceMove;
+            control.options.afterDeviceMove = function (location) {
+                // Orijinal fonksiyonu çağır
+                if (originalAfterDeviceMove) {
+                    originalAfterDeviceMove(location);
+                }
+
+                // Wei Ye bilgilerini güncelle
+                weiYeInfo.updateStats({
+                    accuracy: location.accuracy,
+                    isJump: location.isJump,
+                    initializing: control._weiYeState?.filteringStats.totalUpdates < 3
+                });
+            };
+
+            return weiYeInfo;
+        }
+
+        // Wei Ye bilgi kontrolünü oluştur (isteğe bağlı)
+        const weiYeInfoControl = createWeiYeInfoControl();
 
         // Check location and find the closest door based on altitude
         function checkLocation(lat, lng, altitude) {
