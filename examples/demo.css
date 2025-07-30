@@ -128,19 +128,75 @@
     cursor: pointer;
 }
 
-/* Düşük doğruluk göstergeleri */
+/* Düşük doğruluk dairesi için daha dramatik bir stil */
 .leaflet-simple-locate-circle-low-accuracy {
-    stroke: #ff6666 !important; /* Kırmızı kenar */
-    fill: rgba(255, 102, 102, 0.2) !important; /* Kırmızı dolgu */
-    stroke-width: 2px !important; /* Daha kalın kenar */
-    stroke-dasharray: 5, 5 !important; /* Kesikli çizgi */
-    animation: pulse-circle 2s infinite; /* Yanıp sönme animasyonu */
+    stroke: #F44336 !important;
+    /* Kırmızı kenar */
+    fill: rgba(244, 67, 54, 0.15) !important;
+    /* Kırmızı dolgu */
+    stroke-width: 2px !important;
+    /* Daha kalın kenar */
+    stroke-dasharray: 5, 5 !important;
+    /* Kesikli çizgi */
+    animation: pulse-low-accuracy-circle 3s infinite;
+    /* Yanıp sönme animasyonu */
 }
 
-@keyframes pulse-circle {
-    0% { opacity: 0.7; }
-    50% { opacity: 0.3; }
-    100% { opacity: 0.7; }
+@keyframes pulse-low-accuracy-circle {
+    0% {
+        opacity: 0.8;
+        stroke-width: 2px;
+    }
+
+    50% {
+        opacity: 0.3;
+        stroke-width: 1px;
+    }
+
+    100% {
+        opacity: 0.8;
+        stroke-width: 2px;
+    }
+}
+
+/* Düşük doğruluk uyarı mesajı için stil */
+.accuracy-warning {
+    position: fixed;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 12px;
+    background-color: rgba(244, 67, 54, 0.9);
+    color: white;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 12px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+    text-align: center;
+    animation: fade-in-out 4s forwards;
+}
+
+@keyframes fade-in-out {
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(10px);
+    }
+
+    15% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+
+    85% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-10px);
+    }
 }
 
 /* Wei Ye Algoritması (Sıçrama Tespiti) için yeni stiller */
@@ -161,10 +217,25 @@
 }
 
 @keyframes fadeInOut {
-    0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
-    20% { opacity: 1; transform: translateX(-50%) translateY(0); }
-    80% { opacity: 1; transform: translateX(-50%) translateY(0); }
-    100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+    0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(20px);
+    }
+
+    20% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+
+    80% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(-20px);
+    }
 }
 
 /* Wei Ye Bilgi Kontrol Paneli - Genişletilmiş */
@@ -172,11 +243,12 @@
     padding: 10px;
     background: white;
     border-radius: 4px;
-    box-shadow: 0 1px 5px rgba(0,0,0,0.4);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
     margin-bottom: 10px;
     max-width: 300px;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    transition: all 0.3s ease; /* Yumuşak geçişler için */
+    transition: all 0.3s ease;
+    /* Yumuşak geçişler için */
 }
 
 .wei-ye-title {
@@ -197,18 +269,20 @@
 .wei-ye-door-info {
     margin-top: 8px;
     padding-top: 8px;
-    border-top: 1px solid rgba(0,0,0,0.1);
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
     font-size: 12px;
     line-height: 1.5;
 }
 
 .door-name {
     font-weight: bold;
-    color: #2196F3; /* Mavi renk */
+    color: #2196F3;
+    /* Mavi renk */
 }
 
 .no-door {
-    color: #9E9E9E; /* Gri renk */
+    color: #9E9E9E;
+    /* Gri renk */
     font-style: italic;
 }
 
@@ -226,15 +300,16 @@
         margin-right: 10px;
         margin-bottom: 30px;
     }
-    
+
     .wei-ye-title {
         font-size: 12px;
     }
-    
-    .wei-ye-stats, .wei-ye-door-info {
+
+    .wei-ye-stats,
+    .wei-ye-door-info {
         font-size: 11px;
     }
-    
+
     .door-distance {
         font-size: 10px;
     }

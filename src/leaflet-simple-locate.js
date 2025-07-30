@@ -834,22 +834,44 @@
             else if (this._geolocation) icon_name = "iconGeolocation";
             else return;
 
-            // Doğruluk dairesini güncelle
+            // Doğruluk çok düşükse (>50m), sadece olası konum dairesini göster, işaretçiyi gizle
+            const isLowAccuracy = this._accuracy > 50;
+
+            // Doğruluk dairesini her zaman güncelle
             if (this._circle) {
                 this._circle.setLatLng([this._latitude, this._longitude]);
                 this._circle.setRadius(this._accuracy);
 
                 // Doğruluk düzeyine göre dairenin stilini ayarla
                 const accuracyColor = this._getAccuracyColor(this._accuracy);
-                this._circle.setStyle({
-                    fillColor: accuracyColor,
-                    color: accuracyColor,
-                    fillOpacity: 0.2,
-                    opacity: 0.5
-                });
 
-                // Sıçrama tespit edildiyse visual feedback
-                if (this._weiYeState.isJumpDetected) {
+                // Çok düşük doğrulukta daha vurgulu stil
+                if (isLowAccuracy) {
+                    this._circle.setStyle({
+                        fillColor: '#F44336',  // Kırmızı
+                        color: '#F44336',
+                        fillOpacity: 0.15,
+                        opacity: 0.6,
+                        weight: 2,
+                        dashArray: '5, 5',
+                        // Pulsating efekti için bir sınıf ekle
+                        className: 'leaflet-simple-locate-circle leaflet-simple-locate-circle-low-accuracy'
+                    });
+                } else {
+                    this._circle.setStyle({
+                        fillColor: accuracyColor,
+                        color: accuracyColor,
+                        fillOpacity: 0.2,
+                        opacity: 0.5,
+                        weight: 1,
+                        dashArray: null,
+                        // Normal stil için sınıfı güncelle
+                        className: 'leaflet-simple-locate-circle'
+                    });
+                }
+
+                // Sıçrama tespit edildiyse ve doğruluk düşük değilse visual feedback
+                if (this._weiYeState.isJumpDetected && !isLowAccuracy) {
                     this._circle.setStyle({
                         dashArray: "5, 5",
                         fillOpacity: 0.3,
@@ -860,37 +882,51 @@
                     setTimeout(() => {
                         if (this._circle) {
                             this._circle.setStyle({
-                                dashArray: null,
-                                fillOpacity: 0.2,
-                                opacity: 0.5
+                                dashArray: isLowAccuracy ? "5, 5" : null,
+                                fillOpacity: isLowAccuracy ? 0.15 : 0.2,
+                                opacity: isLowAccuracy ? 0.6 : 0.5
                             });
                         }
                     }, 2000);
                 }
 
             } else if (this.options.drawCircle) {
+                // İlk kez daire oluşturma
                 this._circle = L.circle([this._latitude, this._longitude], {
-                    className: "leaflet-simple-locate-circle",
+                    className: isLowAccuracy ? 'leaflet-simple-locate-circle leaflet-simple-locate-circle-low-accuracy' : 'leaflet-simple-locate-circle',
                     radius: this._accuracy,
-                    fillColor: this._getAccuracyColor(this._accuracy),
-                    color: this._getAccuracyColor(this._accuracy),
-                    fillOpacity: 0.2,
-                    opacity: 0.5
+                    fillColor: isLowAccuracy ? '#F44336' : this._getAccuracyColor(this._accuracy),
+                    color: isLowAccuracy ? '#F44336' : this._getAccuracyColor(this._accuracy),
+                    fillOpacity: isLowAccuracy ? 0.15 : 0.2,
+                    opacity: isLowAccuracy ? 0.6 : 0.5,
+                    weight: isLowAccuracy ? 2 : 1,
+                    dashArray: isLowAccuracy ? '5, 5' : null
                 }).addTo(this._map);
             }
 
-            // Konum marker'ını güncelle
-            if (this._marker && this._marker.icon_name === icon_name) {
-                this._marker.setLatLng([this._latitude, this._longitude]);
+            // Konum marker'ını güncelle veya göster/gizle
+            if (isLowAccuracy) {
+                // Çok düşük doğrulukta, marker'ı gizle (varsa)
+                if (this._marker) {
+                    this._map.removeLayer(this._marker);
+                    this._marker = undefined;
+                }
             } else {
-                // console.log("_updateMarker", new Date().toISOString(), this._marker ? this._marker.icon_name : "undefined", icon_name);
-                if (this._marker) this._map.removeLayer(this._marker);
-                this._marker = L.marker([this._latitude, this._longitude], {
-                    icon: this.options[icon_name]
-                });
-                this._marker.icon_name = icon_name;
-                this._marker.addTo(this._map);
+                // Normal doğrulukta, marker'ı göster ve güncelle
+                if (this._marker && this._marker.icon_name === icon_name) {
+                    this._marker.setLatLng([this._latitude, this._longitude]);
+                } else {
+                    if (this._marker) this._map.removeLayer(this._marker);
+                    this._marker = L.marker([this._latitude, this._longitude], {
+                        icon: this.options[icon_name]
+                    });
+                    this._marker.icon_name = icon_name;
+                    this._marker.addTo(this._map);
+                }
             }
+
+            // Doğruluk bilgisini güncelle - opsiyonel
+            this._lastAccuracy = this._accuracy;
         },
 
         // Doğruluk değerine göre renk döndür

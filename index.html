@@ -95,10 +95,10 @@
             position: "topleft",
 
             // Wei Ye algoritması optimize edilmiş ayarları
-            medianWindowSize: 5,          // Daha küçük pencere boyutu = daha hızlı tepki
-            kalmanProcessNoise: 0.03,     // Daha yüksek Q değeri = daha hızlı tepki
-            kalmanMeasurementNoise: 0.08, // Daha düşük R değeri = daha fazla güven
-            jumpThreshold: 0.00005,       // Yaklaşık 5 metrelik sıçramayı tespit et
+            medianWindowSize: 7,          // Son 7 konumu pencerede tut
+            kalmanProcessNoise: 0.01,     // Daha düşük = daha yavaş takip ama daha stabil
+            kalmanMeasurementNoise: 0.1,  // Daha yüksek = ölçümlere daha az güven
+            jumpThreshold: 0.0001,        // Sıçrama tespiti eşiği (~10-20m)
             showFilterInfo: false,        // Performans için konsol loglarını kapat
             enableFiltering: true,        // Filtrelemeyi etkinleştir
             showFilterDebug: false,       // Debug görsellerini kapat (performans için)
@@ -111,32 +111,48 @@
                 let accuracy = location.accuracy;
                 let angle = location.angle;
 
-                // GPS doğruluğu düşükse uyarı göster (opsiyonel - performans için kapatılabilir)
-                if (accuracy > 50 && !window.accuracyWarningShown) {
-                    showPopup("⚠️ Düşük GPS doğruluğu", "orange");
-                    window.accuracyWarningShown = true;
-                    setTimeout(() => { window.accuracyWarningShown = false; }, 15000); // 15 saniye bekle
-                }
+                // Düşük GPS Doğruluğu durumunda uyarı göster
+                if (accuracy > 50) {
+                    // Sadece ilk seferde veya uzun süre sonra uyarı göster
+                    if (!window.lowAccuracyWarningShown || (Date.now() - window.lastLowAccuracyWarningTime > 30000)) {
+                        showAccuracyWarning(accuracy);
+                        window.lowAccuracyWarningShown = true;
+                        window.lastLowAccuracyWarningTime = Date.now();
+                    }
 
-                // altitude bilgisi SimpleLocate'den doğrudan gelmiyor, 
-                // yaklaşık bir değer belirleyebiliriz (floorsAltitude değerlerine göre)
-                let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
+                    // Düşük doğrulukta bile konum kontrolünü yap ancak görsel indikatör olmayacak
+                    // altitude bilgisi SimpleLocate'den doğrudan gelmiyor
+                    let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
 
-                checkLocation(lat, lng, altitude);
+                    checkLocation(lat, lng, altitude);
 
-                // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
-                if (typeof updateUserPosition === 'function') {
-                    // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
-                    const mockPosition = {
-                        coords: {
-                            latitude: lat,
-                            longitude: lng,
-                            accuracy: accuracy,
-                            altitude: altitude
-                        },
-                        timestamp: Date.now()
-                    };
-                    updateUserPosition(mockPosition);
+                    // Line tracking için düşük doğrulukta veri göndermeyi durdur
+                    // Bu şekilde kullanıcı düşük doğrulukta yanlış rota takibi yapmayacak
+                    // Line tracking fonksiyonu da mevcut konumu koruyacak
+                } else {
+                    // Normal doğrulukta standart işlemi yap
+                    // GPS doğruluğu tekrar iyileştiğinde, uyarı gösterildi bilgisini sıfırla
+                    window.lowAccuracyWarningShown = false;
+
+                    // altitude bilgisi SimpleLocate'den doğrudan gelmiyor
+                    let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
+
+                    checkLocation(lat, lng, altitude);
+
+                    // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
+                    if (typeof updateUserPosition === 'function') {
+                        // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
+                        const mockPosition = {
+                            coords: {
+                                latitude: lat,
+                                longitude: lng,
+                                accuracy: accuracy,
+                                altitude: altitude
+                            },
+                            timestamp: Date.now()
+                        };
+                        updateUserPosition(mockPosition);
+                    }
                 }
             },
 
@@ -188,7 +204,6 @@
                         doorHtml = `
                     <div class="wei-ye-door-info">
                         <div>En Yakın: <span class="door-name">${this._doorInfo.doorId}</span> 
-                        <span class="door-distance">${Math.round(this._doorInfo.distance)}m</span></div>
                         ${this._doorInfo.floor !== null ? `<div>Kat: ${this._doorInfo.floor}</div>` : ''}
                     </div>
                 `;
@@ -247,22 +262,37 @@
                         } else {
                             accuracyEl.className = 'accuracy-value accuracy-poor';
                         }
-                    }
 
-                    // Mobilde is-filtered elementi olmayabilir
-                    if (filteredEl) {
-                        if (stats.isJump) {
-                            filteredEl.textContent = "Sıçrama düzeltildi";
-                            filteredEl.style.color = '#FF5722';
+                        // Çok düşük doğruluk durumunda uyarı göster
+                        if (stats.accuracy > 50) {
+                            // Panel stilini değiştir
+                            this._container.style.border = '2px solid #F44336';
 
-                            // 2 saniye sonra sıfırla
-                            setTimeout(() => {
-                                filteredEl.textContent = "Normal";
-                                filteredEl.style.color = '#4CAF50';
-                            }, 2000);
-                        } else if (!stats.initializing) {
-                            filteredEl.textContent = "Normal";
-                            filteredEl.style.color = '#4CAF50';
+                            // Durum mesajını güncelle
+                            if (filteredEl) {
+                                filteredEl.textContent = "Belirsiz Konum";
+                                filteredEl.style.color = '#F44336';
+                            }
+                        } else {
+                            // Normal stil
+                            this._container.style.border = '';
+
+                            // Sıçrama kontrolü
+                            if (filteredEl) {
+                                if (stats.isJump) {
+                                    filteredEl.textContent = "Sıçrama düzeltildi";
+                                    filteredEl.style.color = '#FF9800';
+
+                                    // 2 saniye sonra sıfırla
+                                    setTimeout(() => {
+                                        filteredEl.textContent = "Normal";
+                                        filteredEl.style.color = '#4CAF50';
+                                    }, 2000);
+                                } else if (!stats.initializing) {
+                                    filteredEl.textContent = "Normal";
+                                    filteredEl.style.color = '#4CAF50';
+                                }
+                            }
                         }
                     }
                 },
