@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
     <meta charset="utf-8" />
-    <title>Gerçek Konum Map Matching Testi</title>
+    <title>Map Matching - Yol Takibi</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
@@ -39,57 +39,18 @@
         }
         .controls button {
             width: 100%;
-            margin-bottom: 5px;
-            padding: 8px;
+            margin-bottom: 8px;
+            padding: 10px 12px;
             border: none;
             border-radius: 4px;
             background: #2196F3;
             color: white;
             font-weight: bold;
             cursor: pointer;
+            font-size: 14px;
         }
         .controls button:hover {
             background: #0b7dda;
-        }
-        .controls .option-group {
-            margin-bottom: 10px;
-        }
-        .controls label {
-            display: block;
-            margin-bottom: 5px;
-            font-size: 14px;
-            font-weight: bold;
-        }
-        .controls input[type="range"] {
-            width: 100%;
-        }
-        .controls .value {
-            float: right;
-            font-size: 12px;
-            color: #666;
-        }
-        .feature-info {
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            z-index: 1000;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 10px;
-            border-radius: 4px;
-            box-shadow: 0 1px 5px rgba(0,0,0,0.4);
-            max-width: 300px;
-        }
-        .feature-info h4 {
-            margin: 0 0 5px 0;
-            font-size: 14px;
-        }
-        .feature-info p {
-            margin: 5px 0;
-            line-height: 1.4;
-        }
-        .highlight {
-            font-weight: bold;
-            color: #2196F3;
         }
         
         /* Yollar için stiller */
@@ -99,51 +60,41 @@
             stroke-opacity: 0.8;
         }
         
-        /* Ham ve eşleştirilmiş konum stilleri */
-        .raw-position {
-            stroke: #F44336;
-            stroke-width: 1;
-            stroke-opacity: 0.8;
-            fill: #F44336;
-            fill-opacity: 0.4;
-        }
+        /* Konumunuzun görsel stili */
         .matched-position {
             stroke: #2196F3;
             stroke-width: 2;
             stroke-opacity: 1;
             fill: #2196F3;
-            fill-opacity: 0.6;
-        }
-        .snapped-line {
-            stroke: #FF9800;
-            stroke-width: 2;
-            stroke-dasharray: 5, 5;
-            stroke-opacity: 0.8;
+            fill-opacity: 0.7;
         }
         
         /* Kullanıcının izlediği hat için stil */
         .user-track {
             stroke: #9C27B0;
-            stroke-width: 3;
+            stroke-width: 4;
             stroke-opacity: 0.7;
         }
         
         /* Durum bildirimi */
         .status {
             position: fixed;
-            top: 80px;
-            right: 10px;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 1000;
-            background: #4CAF50;
+            background: rgba(76,175,80,0.9);
             color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
+            padding: 8px 16px;
+            border-radius: 50px;
             font-weight: bold;
             font-size: 14px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            text-align: center;
         }
         
         .status.error {
-            background: #F44336;
+            background: rgba(244,67,54,0.9);
         }
     </style>
 </head>
@@ -152,27 +103,10 @@
     <div id="map"></div>
     
     <div class="controls">
-        <h3>Map Matching Test</h3>
-        
-        <div class="option-group">
-            <label>Snapping Mesafesi <span class="value" id="snapDistanceValue">15m</span></label>
-            <input type="range" id="snapDistance" min="1" max="50" value="15">
-        </div>
-        
-        <div class="option-group">
-            <button id="toggleRawPosition">Ham GPS Göster/Gizle</button>
-            <button id="toggleTracking">Konum Takibini Başlat</button>
-            <button id="clearTrack">İzleri Temizle</button>
-            <button id="centerMap">Konuma Merkezle</button>
-        </div>
-    </div>
-    
-    <div class="feature-info">
-        <h4>Map Matching Bilgileri</h4>
-        <p>Konum: <span id="position" class="highlight">-</span></p>
-        <p>En Yakın Yol: <span id="nearestLine" class="highlight">-</span></p>
-        <p>Uzaklık: <span id="distance" class="highlight">-</span> metre</p>
-        <p>Snapped Konum: <span id="snappedPosition" class="highlight">-</span></p>
+        <h3>Yol Takibi</h3>
+        <button id="startTracking">Konum Takibini Başlat</button>
+        <button id="clearTrack">İzleri Temizle</button>
+        <button id="centerMap">Konuma Git</button>
     </div>
     
     <script>
@@ -232,63 +166,28 @@
         
         // Kullanıcının konumunu temsil eden değişkenler
         let userPositionMarker = null;
-        let rawPositionMarker = null;
-        let snappedLine = null;
         let userTrack = null;
         let userTrackPositions = [];
         let watchId = null;
         let isTracking = false;
         
+        // Maksimum snap mesafesi (metre cinsinden)
+        const snapDistance = 30;
+        
         // UI elemanları
-        const snapDistanceSlider = document.getElementById('snapDistance');
-        const snapDistanceValue = document.getElementById('snapDistanceValue');
-        const toggleRawPositionBtn = document.getElementById('toggleRawPosition');
-        const toggleTrackingBtn = document.getElementById('toggleTracking');
+        const startTrackingBtn = document.getElementById('startTracking');
         const clearTrackBtn = document.getElementById('clearTrack');
         const centerMapBtn = document.getElementById('centerMap');
         
-        // Bilgi paneli elemanları
-        const positionElement = document.getElementById('position');
-        const nearestLineElement = document.getElementById('nearestLine');
-        const distanceElement = document.getElementById('distance');
-        const snappedPositionElement = document.getElementById('snappedPosition');
-        
-        // Başlangıç ayarları
-        let showRawPosition = true;
-        let snapDistance = parseInt(snapDistanceSlider.value);
-        
-        // Slider değerlerini izle
-        snapDistanceSlider.addEventListener('input', (e) => {
-            snapDistance = parseInt(e.target.value);
-            snapDistanceValue.textContent = `${snapDistance}m`;
-            
-            // Eğer aktif bir konum varsa, yeni snap mesafesine göre güncelle
-            if (userPositionMarker) {
-                const latlng = userPositionMarker.getLatLng();
-                updatePositionWithMatching(latlng.lat, latlng.lng);
-            }
-        });
-        
         // Buton tıklama olaylarını izle
-        toggleRawPositionBtn.addEventListener('click', () => {
-            showRawPosition = !showRawPosition;
-            if (rawPositionMarker) {
-                if (showRawPosition) {
-                    rawPositionMarker.addTo(map);
-                } else {
-                    map.removeLayer(rawPositionMarker);
-                }
-            }
-        });
-        
-        toggleTrackingBtn.addEventListener('click', () => {
+        startTrackingBtn.addEventListener('click', () => {
             if (isTracking) {
                 stopTracking();
-                toggleTrackingBtn.textContent = 'Konum Takibini Başlat';
+                startTrackingBtn.textContent = 'Konum Takibini Başlat';
                 showStatus('Konum takibi durduruldu', false);
             } else {
                 startTracking();
-                toggleTrackingBtn.textContent = 'Konum Takibini Durdur';
+                startTrackingBtn.textContent = 'Konum Takibini Durdur';
             }
         });
         
@@ -300,7 +199,7 @@
         centerMapBtn.addEventListener('click', () => {
             if (userPositionMarker) {
                 map.setView(userPositionMarker.getLatLng(), 19);
-                showStatus('Harita konuma merkezlendi', false);
+                showStatus('Konuma gidildi', false);
             } else {
                 showStatus('Konum bulunamadı!', true);
             }
@@ -314,7 +213,6 @@
             }
             
             isTracking = true;
-            
             showStatus('Konum alınıyor...', false);
             
             // Konum izlemeyi başlat
@@ -324,7 +222,7 @@
                     const { latitude, longitude, accuracy } = position.coords;
                     
                     // Konumu map matching ile güncelle
-                    updatePositionWithMatching(latitude, longitude, accuracy);
+                    updatePositionWithMatching(latitude, longitude);
                     
                     // Haritayı ilk konumda merkezle
                     if (!userPositionMarker) {
@@ -339,7 +237,7 @@
                     
                     switch (error.code) {
                         case error.PERMISSION_DENIED:
-                            errorMsg = 'Konum izni reddedildi';
+                            errorMsg = 'Konum izni verilmedi';
                             break;
                         case error.POSITION_UNAVAILABLE:
                             errorMsg = 'Konum bilgisi kullanılamıyor';
@@ -351,13 +249,13 @@
                     
                     showStatus(errorMsg, true);
                     stopTracking();
-                    toggleTrackingBtn.textContent = 'Konum Takibini Başlat';
+                    startTrackingBtn.textContent = 'Konum Takibini Başlat';
                 },
                 // Konum seçenekleri
                 {
                     enableHighAccuracy: true,
                     maximumAge: 0,
-                    timeout: 5000
+                    timeout: 10000
                 }
             );
         }
@@ -372,21 +270,7 @@
         }
         
         // Konumu Map Matching ile güncelleme
-        function updatePositionWithMatching(lat, lng, accuracy) {
-            // Ham konum için marker oluştur/güncelle
-            if (rawPositionMarker) {
-                rawPositionMarker.setLatLng([lat, lng]);
-            } else {
-                rawPositionMarker = L.circleMarker([lat, lng], {
-                    radius: 5,
-                    className: 'raw-position'
-                });
-                
-                if (showRawPosition) {
-                    rawPositionMarker.addTo(map);
-                }
-            }
-            
+        function updatePositionWithMatching(lat, lng) {
             // Map matching uygula - en yakın yola snap'le
             const matchedResult = snapToNearestPath(lat, lng);
             
@@ -403,30 +287,7 @@
                 ).addTo(map);
             }
             
-            // Ham konum ile eşleştirilmiş konum arasında çizgi
-            if (snappedLine) {
-                map.removeLayer(snappedLine);
-            }
-            
-            // Sadece snap edilmiş konum farklıysa çizgiyi göster
-            if (lat !== matchedResult.snappedPosition.lat || lng !== matchedResult.snappedPosition.lng) {
-                snappedLine = L.polyline(
-                    [
-                        [lat, lng],
-                        [matchedResult.snappedPosition.lat, matchedResult.snappedPosition.lng]
-                    ],
-                    { className: 'snapped-line' }
-                ).addTo(map);
-            }
-            
-            // Bilgi panelini güncelle
-            positionElement.textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-            nearestLineElement.textContent = matchedResult.nearestLine ? matchedResult.nearestLine.id : '-';
-            distanceElement.textContent = matchedResult.distance.toFixed(2);
-            snappedPositionElement.textContent = 
-                `${matchedResult.snappedPosition.lat.toFixed(6)}, ${matchedResult.snappedPosition.lng.toFixed(6)}`;
-            
-            // Kullanıcı izini güncelle
+            // Kullanıcı izini güncelle (snap edilmiş konumu kullan)
             updateUserTrack(matchedResult.snappedPosition.lat, matchedResult.snappedPosition.lng);
         }
         
@@ -466,11 +327,11 @@
                 }
             });
             
-            // Snap mesafesi kullanıcının belirlediği limiti aşıyorsa,
-            // orijinal konumu kullan
-            if (minDistance > snapDistance) {
+            // Snap mesafesi maksimum değeri aşıyorsa, yine de snap et
+            // Sadece çok uzaksa (50m+) orijinal konumu kullan
+            if (minDistance > 50) {
                 snappedPosition = { lat, lng };
-                console.log(`Snap mesafesi çok uzak: ${minDistance.toFixed(2)}m > ${snapDistance}m`);
+                console.log(`Çok uzak: ${minDistance.toFixed(2)}m`);
             }
             
             return {
@@ -483,7 +344,6 @@
         
         // Kullanıcı izini güncelleme
         function updateUserTrack(lat, lng) {
-            // Yeni koordinatı ekle
             userTrackPositions.push([lat, lng]);
             
             // Eski izi kaldır
