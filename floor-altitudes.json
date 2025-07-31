@@ -1,0 +1,8 @@
+{
+  "D": { "altitude": 1145, "svg": "files/ist_map/D.svg" },
+  "EP": { "altitude": 1150, "svg": "files/ist_map/EP.svg" },
+  "ET": { "altitude": 1155, "svg": "files/ist_map/ET.svg" },
+  "FP": { "altitude": 1160, "svg": "files/ist_map/FP.svg" },
+  "FT": { "altitude": 1165, "svg": "files/ist_map/FT.svg" },
+  "H": { "altitude": 1170, "svg": "files/ist_map/H.svg" }
+}

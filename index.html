@@ -20,69 +20,131 @@
     <script>
         "use strict";
 
-        // Katların yükseklik bilgilerini JavaScript nesnesinde saklayacağız
-        const floorsAltitude = {
-            0: 1150,  // Kat 0 için altitude
-            1: 1160  // Kat 1 için altitude
+        // Harita ve koordinat tanımları
+        const mapInfo = {
+            viewBox: {
+                width: 8206,
+                height: 10713
+            },
+            coordinates: {
+                maxLat: 41.30582, // Lat1
+                minLat: 41.24312, // Lat2
+                maxLng: 28.7609,  // Long1
+                minLng: 28.6973   // Long2
+            }
         };
-        const minLat = 37.4250453, maxLat = 37.4268453;
-        const minLng = 31.8511658, maxLng = 31.8533658;
-        let linesArray0 = [];
-        let linesArray1 = [];
 
-        // Helper function for converting local coordinates to lat/lng
-        function localCoordinateToLatLng(x, y, viewBox) {
-            const latDiff = maxLat - minLat;
-            const lngDiff = maxLng - minLng;
-            const latLocalDiff = (y / viewBox.height) * latDiff;
-            const lngLocalDiff = (x / viewBox.width) * lngDiff;
-            return new L.LatLng(maxLat - latLocalDiff, minLng + lngLocalDiff);
+        let floorsData = {}; // floor_altitudes.json içeriği buraya yüklenecek
+        let currentFloorLines = []; // Mevcut katın kapı (line) çizgileri burada tutulacak
+
+        // floor_altitudes.json dosyasını yükleme fonksiyonu
+        async function loadFloorAltitudes() {
+            try {
+                const response = await fetch('floor_altitudes.json');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                floorsData = await response.json();
+                console.log("Kat yükseklikleri başarıyla yüklendi:", floorsData);
+            } catch (error) {
+                console.error("Kat yükseklikleri dosyası yüklenirken hata:", error);
+            }
         }
 
-        // Function to fetch SVG files and parse the doors
-        function fetchAndParseSVG(file) {
-            fetch(file)
-                .then(response => response.text())
-                .then(svgText => {
+        // SVG yerel koordinatlarını LatLng'ye çevirme fonksiyonu
+        function localCoordinateToLatLng(x, y) {
+            const { maxLat, minLat, maxLng, minLng } = mapInfo.coordinates;
+            const { width, height } = mapInfo.viewBox;
+
+            const latDiff = maxLat - minLat;
+            const lngDiff = maxLng - minLng;
+
+            const latLocalDiff = (y / height) * latDiff;
+            const lngLocalDiff = (x / width) * lngDiff;
+
+            const lat = maxLat - latLocalDiff; // SVG y koordinatı yukarıdan aşağıya artar, LatLng ise aşağıya doğru azalır
+            const lng = minLng + lngLocalDiff;
+
+            return new L.LatLng(lat, lng);
+        }
+
+        // Altitude'a en yakın katı ve SVG'sini çeken ve parse eden fonksiyon
+        async function fetchAndParseSVGForAltitude(altitude) {
+            let closestFloor = null;
+            let minAltitudeDiff = Infinity;
+
+            for (const floorKey in floorsData) {
+                const floor = floorsData[floorKey];
+                const diff = Math.abs(altitude - floor.altitude);
+                if (diff < minAltitudeDiff) {
+                    minAltitudeDiff = diff;
+                    closestFloor = floor;
+                    closestFloor.key = floorKey; // Kat anahtarını da ekle (D, EP, vb.)
+                }
+            }
+
+            if (closestFloor) {
+                console.log(`Altitude (${altitude}) değerine en yakın kat: ${closestFloor.key} (Altitude: ${closestFloor.altitude})`);
+                try {
+                    const response = await fetch(closestFloor.svg);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    const svgText = await response.text();
                     const parser = new DOMParser();
                     const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
 
                     const doorsGroup = svgDoc.getElementById('Doors');
                     if (doorsGroup) {
-                        const lines = doorsGroup.getElementsByTagName('line');
-                        const viewBox = svgDoc.documentElement.viewBox.baseVal;
+                        // 'path' yerine 'line' elementlerini alıyoruz
+                        const lines = doorsGroup.getElementsByTagName('line'); 
                         const linesArray = [];
                         Array.from(lines).forEach(line => {
                             const id = line.id;
+                            // Doğrudan x1, y1, x2, y2 niteliklerini alıyoruz
                             const x1 = parseFloat(line.getAttribute('x1'));
                             const y1 = parseFloat(line.getAttribute('y1'));
                             const x2 = parseFloat(line.getAttribute('x2'));
                             const y2 = parseFloat(line.getAttribute('y2'));
-                            const startLatLng = localCoordinateToLatLng(x1, y1, viewBox);
-                            const endLatLng = localCoordinateToLatLng(x2, y2, viewBox);
+                            
+                            // Kontrol ekleyelim, null veya NaN olmamalı
+                            if (isNaN(x1) || isNaN(y1) || isNaN(x2) || isNaN(y2)) {
+                                console.warn(`Line '${id}' için geçersiz koordinat değerleri: x1=${x1}, y1=${y1}, x2=${x2}, y2=${y2}`);
+                                return; // Bu çizgiyi atla
+                            }
+
+                            const startLatLng = localCoordinateToLatLng(x1, y1);
+                            const endLatLng = localCoordinateToLatLng(x2, y2);
+
                             linesArray.push({
                                 id,
                                 start: { lat: startLatLng.lat, lng: startLatLng.lng },
-                                end: { lat: endLatLng.lat, lng: endLatLng.lng }
+                                end: { lat: endLatLng.lat, lng: endLatLng.lng },
+                                floor: closestFloor.key // Hangi kata ait olduğunu da ekleyelim
                             });
                         });
-                        if (file === 'files/0.svg') {
-                            linesArray0 = linesArray; // Kat 0
-                        } else if (file === 'files/1.svg') {
-                            linesArray1 = linesArray; // Kat 1
-                        }
+                        currentFloorLines = linesArray; // Mevcut katın kapılarını güncelle
+                        return { lines: linesArray, floorKey: closestFloor.key };
+                    } else {
+                        console.warn(`'Doors' grubu '${closestFloor.svg}' içinde bulunamadı.`);
+                        currentFloorLines = [];
+                        return { lines: [], floorKey: closestFloor.key };
                     }
-                })
-                .catch(error => console.error('SVG yüklenirken hata:', error));
+                } catch (error) {
+                    console.error(`SVG dosyası yüklenirken veya parse edilirken hata (${closestFloor.svg}):`, error);
+                    currentFloorLines = [];
+                    return { lines: [], floorKey: closestFloor.key };
+                }
+            } else {
+                console.warn("Altitude değerine uygun bir kat bulunamadı.");
+                currentFloorLines = [];
+                return { lines: [], floorKey: null };
+            }
         }
 
-        // Fetch the SVG files for both floors
-        fetchAndParseSVG('files/0.svg');
-        fetchAndParseSVG('files/1.svg');
-
-        // Map initialization
+        // Harita başlatma
         const map = new L.Map("map", {
-            center: [37.425930, 31.852214],
+            center: [(mapInfo.coordinates.maxLat + mapInfo.coordinates.minLat) / 2, (mapInfo.coordinates.maxLng + mapInfo.coordinates.minLng) / 2],
             zoom: 18,
             zoomControl: false,
         });
@@ -94,56 +156,46 @@
         const control = new L.Control.SimpleLocate({
             position: "topleft",
 
-            // Wei Ye algoritması optimize edilmiş ayarları
-            medianWindowSize: 7,          // Son 7 konumu pencerede tut
-            kalmanProcessNoise: 0.01,     // Daha düşük = daha yavaş takip ama daha stabil
-            kalmanMeasurementNoise: 0.1,  // Daha yüksek = ölçümlere daha az güven
-            jumpThreshold: 0.0001,        // Sıçrama tespiti eşiği (~10-20m)
-            showFilterInfo: false,        // Performans için konsol loglarını kapat
-            enableFiltering: true,        // Filtrelemeyi etkinleştir
-            showFilterDebug: false,       // Debug görsellerini kapat (performans için)
-            showJumpWarnings: true,       // Büyük sıçramalar için uyarıları göster
-            lowPassFilterTau: 1.0,        // Filtre zaman sabiti (saniye)
-            enableLowPassFilter: true,    // Filtreyi etkinleştir
+            medianWindowSize: 7,
+            kalmanProcessNoise: 0.01,
+            kalmanMeasurementNoise: 0.1,
+            jumpThreshold: 0.0001,
+            showFilterInfo: false,
+            enableFiltering: true,
+            showFilterDebug: false,
+            showJumpWarnings: true,
+            lowPassFilterTau: 1.0,
+            enableLowPassFilter: true,
 
-            afterDeviceMove: (location) => {
-                // Bu fonksiyon, konum her değiştiğinde çağrılır
+            afterDeviceMove: async (location) => {
                 let lat = location.lat;
                 let lng = location.lng;
                 let accuracy = location.accuracy;
-                let angle = location.angle;
+                let altitude = location.altitude; // SimpleLocate'den gelen altitude bilgisi
 
-                // Düşük GPS Doğruluğu durumunda uyarı göster
+                // Eğer altitude bilgisi SimpleLocate'den gelmiyorsa veya geçersizse, varsayılan değer kullan
+                if (typeof altitude === 'undefined' || isNaN(altitude) || altitude === null) {
+                    if (Object.keys(floorsData).length > 0) {
+                        // Yüklü kat bilgisi varsa ilk katın altitude'unu varsayılan al
+                        altitude = floorsData[Object.keys(floorsData)[0]].altitude; 
+                    } else {
+                        altitude = 1150; // Hiçbir kat bilgisi yoksa sabit bir varsayılan
+                        console.warn("Altitude bilgisi bulunamadı, varsayılan değer (1150) kullanılıyor.");
+                    }
+                }
+
                 if (accuracy > 50) {
-                    // Sadece ilk seferde veya uzun süre sonra uyarı göster
                     if (!window.lowAccuracyWarningShown || (Date.now() - window.lastLowAccuracyWarningTime > 30000)) {
                         showAccuracyWarning(accuracy);
                         window.lowAccuracyWarningShown = true;
                         window.lastLowAccuracyWarningTime = Date.now();
                     }
-
-                    // Düşük doğrulukta bile konum kontrolünü yap ancak görsel indikatör olmayacak
-                    // altitude bilgisi SimpleLocate'den doğrudan gelmiyor
-                    let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
-
-                    checkLocation(lat, lng, altitude);
-
-                    // Line tracking için düşük doğrulukta veri göndermeyi durdur
-                    // Bu şekilde kullanıcı düşük doğrulukta yanlış rota takibi yapmayacak
-                    // Line tracking fonksiyonu da mevcut konumu koruyacak
+                    checkLocation(lat, lng, altitude); // Düşük doğrulukta bile kontrol et
                 } else {
-                    // Normal doğrulukta standart işlemi yap
-                    // GPS doğruluğu tekrar iyileştiğinde, uyarı gösterildi bilgisini sıfırla
                     window.lowAccuracyWarningShown = false;
-
-                    // altitude bilgisi SimpleLocate'den doğrudan gelmiyor
-                    let altitude = floorsAltitude[0]; // Varsayılan olarak Kat 0 altitude değeri
-
                     checkLocation(lat, lng, altitude);
 
-                    // Line tracking fonksiyonunu çağır (SimpleLocate ile entegrasyon)
                     if (typeof updateUserPosition === 'function') {
-                        // navigator.geolocation'dan gelen position nesnesini taklit ediyoruz
                         const mockPosition = {
                             coords: {
                                 latitude: lat,
@@ -168,24 +220,18 @@
         }).addTo(map);
 
         function showAccuracyWarning(accuracy) {
-            // Mevcut uyarı varsa kaldır
             const existingWarning = document.querySelector('.accuracy-warning');
             if (existingWarning) {
                 existingWarning.remove();
             }
 
-            // Yeni uyarı oluştur
             const warning = document.createElement('div');
             warning.className = 'accuracy-warning';
             warning.innerHTML = `
-        <div>Düşük GPS Doğruluğu (±${Math.round(accuracy)}m)</div>
-        
-    `;
-
-            // Sayfaya ekle
+                <div>Düşük GPS Doğruluğu (±${Math.round(accuracy)}m)</div>
+            `;
             document.body.appendChild(warning);
 
-            // Belirli süre sonra kaldır (5 saniye)
             setTimeout(() => {
                 if (warning.parentNode) {
                     warning.remove();
@@ -193,94 +239,73 @@
             }, 5000);
         }
 
-        // Wei Ye Algoritması UI kontrolü oluştur (İsteğe Bağlı)
-        // Wei Ye Algoritması + Kapı Bilgisi UI kontrolü
+        // Wei Ye Algoritması UI kontrolü oluştur
         function createWeiYeInfoControl() {
             const weiYeInfoControl = L.Control.extend({
                 options: {
                     position: 'topright'
                 },
-
-                // Kapı bilgisi verileri
                 _doorInfo: {
                     doorId: null,
                     distance: null,
                     floor: null
                 },
-
                 onAdd: function (map) {
                     this._container = L.DomUtil.create('div', 'leaflet-control leaflet-control-wei-ye-info');
-
-                    // Mobil mi kontrol et
-                    const isMobile = window.innerWidth <= 640;
-
-                    // Panel içeriğini oluştur (kapı bilgisi dahil)
                     this._updateContent();
-
                     L.DomEvent.disableClickPropagation(this._container);
                     return this._container;
                 },
-
-                // Panel içeriğini güncelle
                 _updateContent: function () {
-                    // Mobil mi kontrol et
                     const isMobile = window.innerWidth <= 640;
-
-                    // Kapı bilgisi HTML'i
                     let doorHtml = '';
                     if (this._doorInfo.doorId) {
                         doorHtml = `
-                    <div class="wei-ye-door-info">
-                        <div>En Yakın: <span class="door-name">${this._doorInfo.doorId}</span> 
-                        ${this._doorInfo.floor !== null ? `<div>Kat: ${this._doorInfo.floor}</div>` : ''}
-                    </div>
-                `;
+                            <div class="wei-ye-door-info">
+                                <div>En Yakın: <span class="door-name">${this._doorInfo.doorId}</span> 
+                                ${this._doorInfo.floor !== null ? `<div>Kat: ${this._doorInfo.floor}</div>` : ''}
+                            </div>
+                        `;
                     } else {
                         doorHtml = `
-                    <div class="wei-ye-door-info">
-                        <div class="no-door">Kapı bilgisi bekleniyor...</div>
-                    </div>
-                `;
+                            <div class="wei-ye-door-info">
+                                <div class="no-door">Kapı bilgisi bekleniyor...</div>
+                            </div>
+                        `;
                     }
 
-                    // Mobil cihazlarda daha kompakt içerik
                     if (isMobile) {
                         this._container.innerHTML = `
-                    <div class="wei-ye-info-panel">
-                        <div class="wei-ye-title">Konum Bilgisi</div>
-                        <div class="wei-ye-stats">
-                            <div>Doğruluk: <span class="accuracy-value">--</span>m</div>
-                        </div>
-                        ${doorHtml}
-                    </div>
-                `;
+                            <div class="wei-ye-info-panel">
+                                <div class="wei-ye-title">Konum Bilgisi</div>
+                                <div class="wei-ye-stats">
+                                    <div>Doğruluk: <span class="accuracy-value">--</span>m</div>
+                                </div>
+                                ${doorHtml}
+                            </div>
+                        `;
                     } else {
-                        // Masaüstü için tam içerik
                         this._container.innerHTML = `
-                    <div class="wei-ye-info-panel">
-                        <div class="wei-ye-title">
-                            Konum Bilgisi
-                            <small style="opacity: 0.7; font-weight: normal; font-size: 90%;">Filtrelenmiş</small>
-                        </div>
-                        <div class="wei-ye-stats">
-                            <div>Doğruluk: <span class="accuracy-value">--</span> m</div>
-                            <div>Durum: <span class="is-filtered">Bekleniyor</span></div>
-                        </div>
-                        ${doorHtml}
-                    </div>
-                `;
+                            <div class="wei-ye-info-panel">
+                                <div class="wei-ye-title">
+                                    Konum Bilgisi
+                                    <small style="opacity: 0.7; font-weight: normal; font-size: 90%;">Filtrelenmiş</small>
+                                </div>
+                                <div class="wei-ye-stats">
+                                    <div>Doğruluk: <span class="accuracy-value">--</span> m</div>
+                                    <div>Durum: <span class="is-filtered">Bekleniyor</span></div>
+                                </div>
+                                ${doorHtml}
+                            </div>
+                        `;
                     }
                 },
-
-                // Konum filtreleme istatistikleri güncelleme
                 updateStats: function (stats) {
                     const accuracyEl = this._container.querySelector('.accuracy-value');
                     const filteredEl = this._container.querySelector('.is-filtered');
 
                     if (accuracyEl && stats.accuracy) {
                         accuracyEl.textContent = Math.round(stats.accuracy);
-
-                        // Doğruluk değerine göre renk değiştir
                         if (stats.accuracy <= 5) {
                             accuracyEl.className = 'accuracy-value accuracy-good';
                         } else if (stats.accuracy <= 15) {
@@ -291,27 +316,18 @@
                             accuracyEl.className = 'accuracy-value accuracy-poor';
                         }
 
-                        // Çok düşük doğruluk durumunda uyarı göster
                         if (stats.accuracy > 50) {
-                            // Panel stilini değiştir
                             this._container.style.border = '2px solid #F44336';
-
-                            // Durum mesajını güncelle
                             if (filteredEl) {
                                 filteredEl.textContent = "Belirsiz Konum";
                                 filteredEl.style.color = '#F44336';
                             }
                         } else {
-                            // Normal stil
                             this._container.style.border = '';
-
-                            // Sıçrama kontrolü
                             if (filteredEl) {
                                 if (stats.isJump) {
                                     filteredEl.textContent = "Sıçrama düzeltildi";
                                     filteredEl.style.color = '#FF9800';
-
-                                    // 2 saniye sonra sıfırla
                                     setTimeout(() => {
                                         filteredEl.textContent = "Normal";
                                         filteredEl.style.color = '#4CAF50';
@@ -324,8 +340,6 @@
                         }
                     }
                 },
-
-                // Kapı bilgilerini güncelle
                 updateDoorInfo: function (doorInfo) {
                     if (doorInfo) {
                         this._doorInfo = doorInfo;
@@ -334,32 +348,27 @@
                 }
             });
 
-            // Kontrol oluştur ve ekle
             const weiYeInfo = new weiYeInfoControl().addTo(map);
 
-            // Pencere boyutu değiştiğinde yeniden oluştur
             window.addEventListener('resize', () => {
-                const doorInfo = weiYeInfo._doorInfo; // Mevcut kapı bilgisini kaydet
+                const doorInfo = weiYeInfo._doorInfo;
                 map.removeControl(weiYeInfo);
                 const newWeiYeInfo = new weiYeInfoControl().addTo(map);
-                newWeiYeInfo._doorInfo = doorInfo; // Kapı bilgisini geri yükle
-                newWeiYeInfo._updateContent(); // İçeriği güncelle
+                newWeiYeInfo._doorInfo = doorInfo;
+                newWeiYeInfo._updateContent();
 
-                // Referansı güncelle
+                // Referansları güncelle
                 weiYeInfo._container = newWeiYeInfo._container;
                 weiYeInfo._doorInfo = newWeiYeInfo._doorInfo;
                 weiYeInfo._updateContent = newWeiYeInfo._updateContent;
             });
 
-            // SimpleLocate kontrolüne afterDeviceMove callbacki eklenmişse buradan bilgileri güncelle
             const originalAfterDeviceMove = control.options.afterDeviceMove;
             control.options.afterDeviceMove = function (location) {
-                // Orijinal fonksiyonu çağır
                 if (originalAfterDeviceMove) {
                     originalAfterDeviceMove(location);
                 }
 
-                // Wei Ye bilgilerini güncelle
                 weiYeInfo.updateStats({
                     accuracy: location.accuracy,
                     isJump: location.isJump,
@@ -370,71 +379,93 @@
             return weiYeInfo;
         }
 
-        // Wei Ye bilgi kontrolünü oluştur (isteğe bağlı)
         const weiYeInfoControl = createWeiYeInfoControl();
 
-        // Check location and find the closest door based on altitude
-        function checkLocation(lat, lng, altitude) {
-            console.log("Checking Location:", lat, lng, altitude); // Debugging the received coordinates and altitude
+        // Konum kontrolü ve en yakın kapıyı bulma fonksiyonu
+        async function checkLocation(lat, lng, altitude) {
+            console.log("Konum Kontrol Ediliyor:", lat, lng, "Altitude:", altitude);
 
-            // Determine which floor the user is on based on altitude
-            let linesArray;
-            if (altitude >= floorsAltitude[0] && altitude < floorsAltitude[1]) {
-                console.log("Kat 0'da");
-                linesArray = linesArray0;
-            } else if (altitude >= floorsAltitude[1]) {
-                console.log("Kat 1'de");
-                linesArray = linesArray1;
+            // Eğer currentFloorLines boşsa veya doğru katın çizgileri değilse, yeni katı yükle
+            // Bu kontrol, sadece kat değiştiğinde veya başlangıçta yeni SVG'yi çekmeyi sağlar
+            if (currentFloorLines.length === 0 || 
+                (currentFloorLines.length > 0 && currentFloorLines[0].floor !== getClosestFloorKey(altitude))) {
+                const { lines, floorKey } = await fetchAndParseSVGForAltitude(altitude);
+                currentFloorLines = lines; // Güncel katın çizgilerini ayarla
+                if (!floorKey) {
+                    console.warn("Geçerli bir kat anahtarı bulunamadı, kapı bilgileri güncellenemiyor.");
+                    weiYeInfoControl.updateDoorInfo(null);
+                    return;
+                }
             }
-
-            // Log the boundary values for debugging
-            console.log("Min Lat:", minLat, "Max Lat:", maxLat);
-            console.log("Min Lng:", minLng, "Max Lng:", maxLng);
-
-            // Check if the user is inside the boundaries
+            
+            // Konum harita sınırları içinde mi kontrol et
+            const { minLat, maxLat, minLng, maxLng } = mapInfo.coordinates;
             if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) {
                 console.log("❌ Dışarıda");
                 showPopup("❌ Dışarıda", "red");
+                weiYeInfoControl.updateDoorInfo(null); // Dışarıdaysa kapı bilgisi gösterme
+                return;
             } else {
                 console.log("✅ İçeridesiniz");
-                findClosestLine(lat, lng, linesArray);
+                findClosestLine(lat, lng, currentFloorLines, getClosestFloorKey(altitude));
             }
         }
 
+        // Altitude'a en yakın kat anahtarını bulan yardımcı fonksiyon
+        function getClosestFloorKey(altitude) {
+            let closestFloorKey = null;
+            let minAltitudeDiff = Infinity;
+            for (const floorKey in floorsData) {
+                const floor = floorsData[floorKey];
+                const diff = Math.abs(altitude - floor.altitude);
+                if (diff < minAltitudeDiff) {
+                    minAltitudeDiff = diff;
+                    closestFloorKey = floorKey;
+                }
+            }
+            return closestFloorKey;
+        }
 
         // En yakın kapıyı bulma fonksiyonu
-        function findClosestLine(lat, lng, linesArray) {
+        function findClosestLine(lat, lng, linesArray, currentFloorKey) {
             let closestLine = null;
             let minDistance = Infinity;
-            let currentFloor = null; // Mevcut kat bilgisini ekle
 
-            // Altitude bilgisine göre kat belirle
-            // NOT: Bu kısmı kendi altitude-floor mantığınıza göre güncellemelisiniz
-            if (typeof currentAltitude !== 'undefined') {
-                if (currentAltitude >= floorsAltitude[0] && currentAltitude < floorsAltitude[1]) {
-                    currentFloor = 0;
-                } else if (currentAltitude >= floorsAltitude[1]) {
-                    currentFloor = 1;
-                }
+            if (!linesArray || linesArray.length === 0) {
+                console.warn("En yakın kapıyı bulmak için kullanılacak çizgi verisi yok.");
+                weiYeInfoControl.updateDoorInfo(null);
+                return null;
             }
 
             linesArray.forEach(line => {
+                // Leaflet'in kendi distance metodunu kullanarak mesafeyi hesapla (metre cinsinden)
                 const startDist = map.distance([lat, lng], [line.start.lat, line.start.lng]);
                 const endDist = map.distance([lat, lng], [line.end.lat, line.end.lng]);
-                const minLineDist = Math.min(startDist, endDist);
+                
+                // Noktanın bir çizgiye olan en kısa mesafesini bulma (bu daha doğru bir yaklaşımdır)
+                // Nokta (lat, lng), çizgi (start.lat, start.lng) - (end.lat, end.lng)
+                const p = L.latLng(lat, lng);
+                const a = L.latLng(line.start.lat, line.start.lng);
+                const b = L.latLng(line.end.lat, line.end.lng);
+                
+                // Bu kısım için biraz daha karmaşık bir geometri hesaplaması gerekir.
+                // Basitlik adına, şimdilik sadece başlangıç ve bitiş noktalarına olan mesafelerin min'i alınsın.
+                // Gerçek bir "çizgiye en yakın nokta" hesaplaması için özel bir kütüphane veya daha fazla matematiksel fonksiyon gerekebilir.
+                // Şimdilik, mevcut yaklaşımı (başlangıç/bitiş noktalarına olan min mesafe) koruyalım.
+                const distanceToLineSegment = Math.min(startDist, endDist);
 
-                if (minLineDist < minDistance) {
-                    minDistance = minLineDist;
+
+                if (distanceToLineSegment < minDistance) {
+                    minDistance = distanceToLineSegment;
                     closestLine = line;
                 }
             });
 
-            // En yakın kapı bulunduysa Wei Ye kontrol paneline ekle
             if (closestLine) {
                 weiYeInfoControl.updateDoorInfo({
                     doorId: closestLine.id,
-                    distance: minDistance,
-                    floor: currentFloor
+                    distance: minDistance.toFixed(2), // Mesafeyi 2 ondalık basamağa yuvarla
+                    floor: currentFloorKey // `currentFloorKey` parametresini kullan
                 });
                 return closestLine;
             } else {
@@ -443,10 +474,13 @@
             }
         }
 
-        // Function to show a popup
+        // Popup gösterme fonksiyonu
         function showPopup(message, color) {
             let popup = L.popup().setLatLng(map.getCenter()).setContent(`<span style="color: ${color}">${message}</span>`).openOn(map);
         }
+
+        // Sayfa yüklendiğinde kat yüksekliklerini yükle
+        loadFloorAltitudes();
 
     </script>
     <script src="dist/line-tracking.js"></script>
