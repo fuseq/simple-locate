@@ -53,6 +53,8 @@
             enableFiltering: true,        // Filtrelemeyi etkinleştir/devre dışı bırak
             showFilterDebug: false,       // Debug bilgilerini göster
             showJumpWarnings: true,       // Sıçrama uyarılarını göster
+            lowPassFilterTau: 1.0,        // Filtre zaman sabiti (saniye)
+            enableLowPassFilter: true,    // Low Pass Filtreyi etkinleştir/devre dışı bırak
 
             afterClick: null,
             afterMarkerAdd: null,
@@ -160,6 +162,10 @@
             this._accuracy = undefined;
             this._angle = undefined;
 
+            this._lowPassFilterLat = null;
+            this._lowPassFilterLng = null;
+            this._lowPassFilterInitialized = false;
+
             // Median Filtre için özellikleri ekle
             this._medianFilter = {
                 windowSize: this.options.medianWindowSize,
@@ -253,65 +259,6 @@
         },
 
         // Kalman Filtreyi uygula
-        _applyKalmanFilter: function (position) {
-            const k = this._kalmanFilter;
-
-            // İlk çalıştırma
-            if (k.x_lat === null || k.x_lng === null) {
-                k.x_lat = position.latitude;
-                k.x_lng = position.longitude;
-                k.P_lat = 1.0;
-                k.P_lng = 1.0;
-                return position;
-            }
-
-            // Enlem için Kalman filtresini uygula
-            let predicted_P_lat = k.P_lat + k.Q_lat;
-            let K_lat = predicted_P_lat / (predicted_P_lat + k.R_lat);
-            let updated_x_lat = k.x_lat + K_lat * (position.latitude - k.x_lat);
-            let updated_P_lat = (1 - K_lat) * predicted_P_lat;
-
-            // Boylam için Kalman filtresini uygula
-            let predicted_P_lng = k.P_lng + k.Q_lng;
-            let K_lng = predicted_P_lng / (predicted_P_lng + k.R_lng);
-            let updated_x_lng = k.x_lng + K_lng * (position.longitude - k.x_lng);
-            let updated_P_lng = (1 - K_lng) * predicted_P_lng;
-
-            // Filtrelenmiş değerleri kaydet
-            k.x_lat = updated_x_lat;
-            k.x_lng = updated_x_lng;
-            k.P_lat = updated_P_lat;
-            k.P_lng = updated_P_lng;
-
-            return {
-                latitude: updated_x_lat,
-                longitude: updated_x_lng,
-                accuracy: position.accuracy,
-                timestamp: position.timestamp
-            };
-        },
-
-        _detectUserMoving: function () {
-            const m = this._medianFilter;
-
-            // Yeteri kadar veri yoksa hareket halinde kabul et
-            if (m.latHistory.length < 3) {
-                return true;
-            }
-
-            // Son 3 konum arasındaki mesafeleri hesapla
-            const lastIndex = m.latHistory.length - 1;
-            const currentPos = L.latLng(m.latHistory[lastIndex], m.lngHistory[lastIndex]);
-            const prevPos = L.latLng(m.latHistory[lastIndex - 1], m.lngHistory[lastIndex - 1]);
-            const prevPrevPos = L.latLng(m.latHistory[lastIndex - 2], m.lngHistory[lastIndex - 2]);
-
-            const dist1 = currentPos.distanceTo(prevPos);
-            const dist2 = prevPos.distanceTo(prevPrevPos);
-
-            // Son kayıtlar arasında mesafe varsa hareket halinde
-            return (dist1 > 3 || dist2 > 3); // 3 metre üstü hareketi algıla
-        },
-
         _applyWeiYeFilter: function (position) {
             // Filtreleme devre dışıysa, orijinal konumu döndür
             if (!this.options.enableFiltering) {
@@ -328,17 +275,88 @@
                 accuracy: position.accuracy
             };
 
+            // Low Pass Filter'ı uygula
+            let lowPassFiltered = position;
+
+            if (this.options.enableLowPassFilter !== false) {
+                // Low Pass Filter'ları ilk kullanım için başlat
+                if (!this._lowPassFilterInitialized) {
+                    // Örnek frekans: 1 Hz (saniyede bir örnek olduğunu varsayalım)
+                    const sampleFrequency = 1.0;
+
+                    // Filtrenin zaman sabitini kullanıcı seçeneğinden al
+                    const tau = this.options.lowPassFilterTau || 1.0;
+
+                    // LowPassFilter nesnelerini oluştur
+                    this._lowPassFilterLat = new LowPassFilter(sampleFrequency, tau);
+                    this._lowPassFilterLng = new LowPassFilter(sampleFrequency, tau);
+
+                    // İlk değerleri ayarla
+                    this._lowPassFilterLat.addSample(position.latitude);
+                    this._lowPassFilterLng.addSample(position.longitude);
+
+                    // Filtre başlatıldı
+                    this._lowPassFilterInitialized = true;
+
+                    // İlk filtreleme için ham değerleri kullan
+                    lowPassFiltered = position;
+                } else {
+                    // Tau değerini kullanıcının hareketi durumuna göre dinamik olarak ayarla
+                    let dynamicTau = this.options.lowPassFilterTau || 1.0;
+
+                    // Hareket durumuna göre ayarlama
+                    if (this._detectUserMoving()) {
+                        // Hareket halindeyse daha düşük tau (daha hızlı tepki)
+                        dynamicTau = Math.max(0.3, dynamicTau / 2);
+                    } else {
+                        // Durağan haldeyse daha yüksek tau (daha fazla yumuşatma)
+                        dynamicTau = Math.min(2.0, dynamicTau * 1.5);
+                    }
+
+                    // Doğruluk durumuna göre ayarlama
+                    if (position.accuracy > 20) {
+                        // Düşük doğrulukta daha agresif filtreleme
+                        dynamicTau = Math.min(3.0, dynamicTau * 1.5);
+                    }
+
+                    // Tau değerini güncelle
+                    this._lowPassFilterLat.setTau(dynamicTau);
+                    this._lowPassFilterLng.setTau(dynamicTau);
+
+                    // Yeni örnekleri ekle ve filtreleme yap
+                    this._lowPassFilterLat.addSample(position.latitude);
+                    this._lowPassFilterLng.addSample(position.longitude);
+
+                    // Filtrelenmiş değerleri al
+                    lowPassFiltered = {
+                        latitude: this._lowPassFilterLat.lastOutput(),
+                        longitude: this._lowPassFilterLng.lastOutput(),
+                        accuracy: position.accuracy,
+                        timestamp: position.timestamp,
+                        lpfApplied: true
+                    };
+
+                    // Debug için konsola yazdır (opsiyonel)
+                    if (this.options.showFilterInfo) {
+                        console.log(`Low Pass Filter: ${Math.abs(lowPassFiltered.latitude - position.latitude).toFixed(8)} lat diff, tau: ${dynamicTau.toFixed(2)}`);
+                    }
+                }
+            }
+
+            // Wei Ye algoritmasına Low Pass Filter'dan geçirilmiş veriyi gönder
+            // NOT: Burada "position" yerine "lowPassFiltered" kullanıyoruz
+
             // Performans optimizasyonu: Çok düşük doğruluk değerlerinde (çok kötü GPS sinyali - binalarda)
             // daha agresif filtreleme yap, yüksek doğruluk değerlerinde (iyi GPS sinyali - açık alanda)
             // daha az filtreleme yap
-            const isLowAccuracy = position.accuracy > 20;
+            const isLowAccuracy = lowPassFiltered.accuracy > 20;
 
-            // 1. Median filtre sadece düşük doğruluk durumlarında uygula
+            // 2. Median filtre sadece düşük doğruluk durumlarında uygula
             let medianFiltered;
             if (isLowAccuracy) {
-                medianFiltered = this._applyMedianFilter(position);
+                medianFiltered = this._applyMedianFilter(lowPassFiltered);
             } else {
-                medianFiltered = position; // İyi doğruluktaysa median filtre atla
+                medianFiltered = lowPassFiltered; // İyi doğruluktaysa median filtre atla
             }
 
             // 2. Median filtre ve ham veri arasındaki farkı hesapla (atlama tespiti)
@@ -633,6 +651,9 @@
                 jumpsDetected: 0,
                 maxJumpDistance: 0
             };
+            this._lowPassFilterLat = null;
+            this._lowPassFilterLng = null;
+            this._lowPassFilterInitialized = false;
 
             // Debug görsellerini kaldır
             if (this._rawPositionMarker && this._map) {

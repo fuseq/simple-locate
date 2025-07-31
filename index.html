@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <script src="dist/leaflet-simple-locate.min.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/low-pass-filter@1.0.0/dist/low-pass-filter.min.js"></script>
 
     <link rel="stylesheet" href="examples/demo.css" />
     <link rel="stylesheet" href="examples/style.css" />
@@ -103,6 +103,8 @@
             enableFiltering: true,        // Filtrelemeyi etkinleştir
             showFilterDebug: false,       // Debug görsellerini kapat (performans için)
             showJumpWarnings: true,       // Büyük sıçramalar için uyarıları göster
+            lowPassFilterTau: 1.0,        // Filtre zaman sabiti (saniye)
+            enableLowPassFilter: true,    // Filtreyi etkinleştir
 
             afterDeviceMove: (location) => {
                 // Bu fonksiyon, konum her değiştiğinde çağrılır
@@ -164,6 +166,32 @@
                 }
             }
         }).addTo(map);
+
+        function showAccuracyWarning(accuracy) {
+            // Mevcut uyarı varsa kaldır
+            const existingWarning = document.querySelector('.accuracy-warning');
+            if (existingWarning) {
+                existingWarning.remove();
+            }
+
+            // Yeni uyarı oluştur
+            const warning = document.createElement('div');
+            warning.className = 'accuracy-warning';
+            warning.innerHTML = `
+        <div>Düşük GPS Doğruluğu (±${Math.round(accuracy)}m)</div>
+        
+    `;
+
+            // Sayfaya ekle
+            document.body.appendChild(warning);
+
+            // Belirli süre sonra kaldır (5 saniye)
+            setTimeout(() => {
+                if (warning.parentNode) {
+                    warning.remove();
+                }
+            }, 5000);
+        }
 
         // Wei Ye Algoritması UI kontrolü oluştur (İsteğe Bağlı)
         // Wei Ye Algoritması + Kapı Bilgisi UI kontrolü
