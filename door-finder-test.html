@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Kapı Bulucu - En Yakın Kapı Testi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        #map {
+            width: 100%;
+            height: 100vh;
+        }
+
+        .controls {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            width: 280px;
+        }
+
+        .controls h3 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+
+        .form-group input:focus {
+            border-color: #4CAF50;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+        }
+
+        .controls button {
+            width: 100%;
+            margin-top: 5px;
+            margin-bottom: 8px;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 4px;
+            background: #2196F3;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .controls button:hover {
+            background: #0b7dda;
+        }
+
+        .controls button.secondary {
+            background: #757575;
+        }
+
+        .controls button.secondary:hover {
+            background: #616161;
+        }
+
+        .result-panel {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .result-panel h4 {
+            margin: 0 0 8px 0;
+            color: #333;
+        }
+
+        .result-item {
+            margin-bottom: 5px;
+            color: #555;
+        }
+
+        .result-value {
+            font-weight: bold;
+            color: #000;
+        }
+
+        /* Konum işaretçisi stili */
+        .user-location {
+            stroke: #2196F3;
+            stroke-width: 2;
+            stroke-opacity: 1;
+            fill: #2196F3;
+            fill-opacity: 0.7;
+        }
+
+        /* En yakın kapı stili */
+        .nearest-door {
+            stroke: #4CAF50;
+            stroke-width: 4;
+            stroke-opacity: 0.8;
+            fill: none;
+        }
+
+        /* Bağlantı çizgisi stili */
+        .connection-line {
+            stroke: #FF9800;
+            stroke-width: 2;
+            stroke-dasharray: 5, 5;
+            stroke-opacity: 0.7;
+        }
+
+        /* Durum mesajı stili */
+        .status-message {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+            text-align: center;
+        }
+
+        .status-message.error {
+            background: rgba(244, 67, 54, 0.9);
+        }
+
+        .floor-badge {
+            position: fixed;
+            left: 10px;
+            bottom: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            z-index: 900;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+
+    <div class="controls">
+        <h3>Kapı Bulucu Test Aracı</h3>
+
+        <div class="form-group">
+            <label for="altitude">Yükseklik (m):</label>
+            <input type="number" id="altitude" value="1150" min="1000" max="1200" step="5">
+        </div>
+
+        <div class="form-group">
+            <label for="latitude">Enlem:</label>
+            <input type="text" id="latitude" value="41.27447">
+        </div>
+
+        <div class="form-group">
+            <label for="longitude">Boylam:</label>
+            <input type="text" id="longitude" value="28.7291">
+        </div>
+
+        <button id="testLocation">Konumu Test Et</button>
+        <button id="centerMap" class="secondary">Haritayı Merkezle</button>
+
+        <div class="result-panel">
+            <h4>Sonuçlar</h4>
+            <div class="result-item">Kat: <span id="floorResult" class="result-value">-</span></div>
+            <div class="result-item">En Yakın Kapı: <span id="doorResult" class="result-value">-</span></div>
+            <div class="result-item">Mesafe: <span id="distanceResult" class="result-value">-</span> m</div>
+        </div>
+    </div>
+
+    <div id="floorBadge" class="floor-badge">Kat: -</div>
+
+    <script>
+        // Harita başlangıç ayarları
+        const map = L.map('map', {
+            center: [41.27447, 28.7291],
+            zoom: 18,
+            zoomControl: true
+        });
+
+        // OpenStreetMap altlık haritası
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Değişkenler
+        let floorAltitudes = {};
+        let currentFloorKey = null;
+        let doorLinesLatLng = [];
+        let userLocationMarker = null;
+        let nearestDoorMarker = null;
+        let connectionLine = null;
+
+        // UI elemanları
+        const altitudeInput = document.getElementById('altitude');
+        const latitudeInput = document.getElementById('latitude');
+        const longitudeInput = document.getElementById('longitude');
+        const testLocationBtn = document.getElementById('testLocation');
+        const centerMapBtn = document.getElementById('centerMap');
+        const floorResult = document.getElementById('floorResult');
+        const doorResult = document.getElementById('doorResult');
+        const distanceResult = document.getElementById('distanceResult');
+        const floorBadge = document.getElementById('floorBadge');
+
+        // Map bilgileri
+        const mapInfo = {
+            viewBox: { width: 8206, height: 10713 },
+            coordinates: {
+                maxLat: 41.30582,
+                minLat: 41.24312,
+                maxLng: 28.7609,
+                minLng: 28.6973
+            },
+            center: [41.27447, 28.7291],
+            bounds: [
+                [41.30582, 28.7609],
+                [41.24312, 28.6973]
+            ],
+            maxBounds: [
+                [41.30882, 28.7639],
+                [41.24012, 28.6943]
+            ],
+            scale: 0.0004072713155
+        };
+
+        // SVG koordinatlarını harita koordinatlarına dönüştürme
+        function svgCoordToLatLng(x, y) {
+            const { maxLat, minLat, maxLng, minLng } = mapInfo.coordinates;
+            const { width, height } = mapInfo.viewBox;
+
+            const latDiff = maxLat - minLat;
+            const lngDiff = maxLng - minLng;
+
+            const latLocalDiff = (y / height) * latDiff;
+            const lngLocalDiff = (x / width) * lngDiff;
+
+            const lat = maxLat - latLocalDiff;
+            const lng = minLng + lngLocalDiff;
+
+            return { lat, lng };
+        }
+
+        // floor-altitudes.json dosyasını yükle
+        fetch("floor-altitudes.json")
+            .then(res => res.json())
+            .then(data => {
+                floorAltitudes = data;
+                console.log("Kat altitüdü verisi yüklendi:", floorAltitudes);
+                updateFloorOptions();
+            })
+            .catch(err => {
+                showStatusMessage("Kat verisi yüklenemedi: " + err.message, true);
+            });
+
+        // Kat seçeneklerini güncelle
+        function updateFloorOptions() {
+            let altitudeInfo = "Yükseklikler: ";
+            for (const key in floorAltitudes) {
+                altitudeInfo += `${key}(${floorAltitudes[key].altitude}m) `;
+            }
+            showStatusMessage(altitudeInfo, false);
+        }
+
+        // En yakın katı bulma
+        function findClosestFloor(altitude) {
+            if (!floorAltitudes || Object.keys(floorAltitudes).length === 0) return null;
+            let closestKey = null;
+            let minDiff = Infinity;
+
+            for (const key in floorAltitudes) {
+                const diff = Math.abs(altitude - floorAltitudes[key].altitude);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closestKey = key;
+                }
+            }
+            return closestKey;
+        }
+
+        // SVG'den kapı çizgilerini yükleme
+        function loadFloorDoors(floorKey) {
+            return new Promise((resolve, reject) => {
+                if (!floorKey || !floorAltitudes[floorKey]) {
+                    resolve([]);
+                    return;
+                }
+
+                fetch(floorAltitudes[floorKey].svg)
+                    .then(res => res.text())
+                    .then(svgText => {
+                        const parser = new DOMParser();
+                        const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
+
+                        const doorsGroup = svgDoc.querySelector("g#Doors");
+                        if (!doorsGroup) {
+                            console.warn(`SVG'de 'Doors' grubu bulunamadı: ${floorKey}`);
+                            resolve([]);
+                            return;
+                        }
+
+                        const lines = doorsGroup.querySelectorAll("line");
+                        const doorLines = [];
+
+                        lines.forEach((lineElem, index) => {
+                            const x1 = parseFloat(lineElem.getAttribute("x1"));
+                            const y1 = parseFloat(lineElem.getAttribute("y1"));
+                            const x2 = parseFloat(lineElem.getAttribute("x2"));
+                            const y2 = parseFloat(lineElem.getAttribute("y2"));
+
+                            // SVG'deki line elementinin gerçek ID'sini kullan
+                            // Eğer ID yoksa index ile bir ID oluştur
+                            const lineId = lineElem.getAttribute("id") || `${floorKey}-${index + 1}`;
+
+                            const start = svgCoordToLatLng(x1, y1);
+                            const end = svgCoordToLatLng(x2, y2);
+
+                            doorLines.push({
+                                id: lineId, // SVG'deki gerçek line ID'si
+                                start,
+                                end
+                            });
+                        });
+
+                        resolve(doorLines);
+                    })
+                    .catch(err => {
+                        console.error(`SVG yüklenirken hata (${floorKey}):`, err);
+                        showStatusMessage(`SVG yüklenemedi: ${err.message}`, true);
+                        resolve([]);
+                    });
+            });
+        }
+
+        // Konumu güncelleme ve en yakın kapıyı bulma
+        function updateLocation(lat, lng, altitude) {
+            // Geçerli konum kontrolü
+            if (isNaN(lat) || isNaN(lng) || isNaN(altitude)) {
+                showStatusMessage("Geçersiz konum veya yükseklik değeri!", true);
+                return;
+            }
+
+            // Kullanıcı konumunu haritada göster
+            if (userLocationMarker) {
+                userLocationMarker.setLatLng([lat, lng]);
+            } else {
+                userLocationMarker = L.circleMarker([lat, lng], {
+                    radius: 8,
+                    className: 'user-location'
+                }).addTo(map);
+            }
+
+            // Yüksekliğe göre en yakın katı bul
+            const floorKey = findClosestFloor(altitude);
+            floorResult.textContent = floorKey || 'Bulunamadı';
+            floorBadge.textContent = `Kat: ${floorKey || '-'}`;
+
+            if (floorKey !== currentFloorKey) {
+                currentFloorKey = floorKey;
+
+                // Mevcut katın kapılarını yükle
+                loadFloorDoors(currentFloorKey).then(lines => {
+                    doorLinesLatLng = lines;
+                    console.log(`Kat ${floorKey} için ${doorLinesLatLng.length} kapı çizgisi yüklendi`);
+
+                    if (doorLinesLatLng.length === 0) {
+                        showStatusMessage(`Kat ${floorKey} için kapı verisi bulunamadı!`, true);
+                    } else {
+                        showStatusMessage(`Kat ${floorKey} için ${doorLinesLatLng.length} kapı yüklendi`, false);
+                    }
+
+                    // Kapı verisi yüklendikten sonra en yakın kapıyı bul
+                    findNearestDoor(lat, lng);
+                });
+            } else {
+                // Aynı kat, sadece en yakın kapıyı güncelle
+                findNearestDoor(lat, lng);
+            }
+        }
+
+        // En yakın kapıyı bulma
+        function findNearestDoor(lat, lng) {
+            if (!doorLinesLatLng || doorLinesLatLng.length === 0) {
+                doorResult.textContent = 'Kapı verisi yok';
+                distanceResult.textContent = '-';
+                return;
+            }
+
+            let closestDoor = null;
+            let minDist = Infinity;
+            let closestPoint = null;
+
+            doorLinesLatLng.forEach(door => {
+                // Her kapı çizgisinin başlangıç ve bitiş noktalarına olan mesafeleri hesapla
+                const distStart = map.distance([lat, lng], [door.start.lat, door.start.lng]);
+                const distEnd = map.distance([lat, lng], [door.end.lat, door.end.lng]);
+
+                // Daha yakın olan mesafeyi ve noktayı kaydet
+                if (distStart < distEnd) {
+                    if (distStart < minDist) {
+                        minDist = distStart;
+                        closestDoor = door;
+                        closestPoint = [door.start.lat, door.start.lng];
+                    }
+                } else {
+                    if (distEnd < minDist) {
+                        minDist = distEnd;
+                        closestDoor = door;
+                        closestPoint = [door.end.lat, door.end.lng];
+                    }
+                }
+            });
+
+            if (closestDoor) {
+                doorResult.textContent = closestDoor.id;
+                distanceResult.textContent = minDist.toFixed(1);
+
+                // En yakın kapıyı haritada göster
+                updateNearestDoorMarker(closestDoor, closestPoint, [lat, lng], minDist);
+            } else {
+                doorResult.textContent = 'Bulunamadı';
+                distanceResult.textContent = '-';
+
+                // Kapı marker'ını kaldır
+                if (nearestDoorMarker) {
+                    map.removeLayer(nearestDoorMarker);
+                    nearestDoorMarker = null;
+                }
+
+                // Bağlantı çizgisini kaldır
+                if (connectionLine) {
+                    map.removeLayer(connectionLine);
+                    connectionLine = null;
+                }
+            }
+        }
+
+        // En yakın kapı marker'ını güncelleme
+        function updateNearestDoorMarker(door, closestPoint, userPoint, distance) {
+            // Kapı çizgisini göster
+            if (nearestDoorMarker) {
+                map.removeLayer(nearestDoorMarker);
+            }
+
+            nearestDoorMarker = L.polyline([
+                [door.start.lat, door.start.lng],
+                [door.end.lat, door.end.lng]
+            ], {
+                className: 'nearest-door',
+                weight: 4
+            }).addTo(map);
+
+            // Kullanıcı konumu ile en yakın kapı arasında bağlantı çizgisi
+            if (connectionLine) {
+                map.removeLayer(connectionLine);
+            }
+
+            connectionLine = L.polyline([
+                userPoint,
+                closestPoint
+            ], {
+                className: 'connection-line'
+            }).addTo(map);
+
+            // Mesafe popupı
+            L.popup()
+                .setLatLng(closestPoint)
+                .setContent(`<div style="text-align:center"><strong>${door.id}</strong><br>${distance.toFixed(1)} metre</div>`)
+                .openOn(map);
+        }
+
+        // Durum mesajı gösterme
+        function showStatusMessage(message, isError) {
+            // Mevcut mesaj varsa kaldır
+            const existingMsg = document.querySelector('.status-message');
+            if (existingMsg) {
+                existingMsg.remove();
+            }
+
+            // Yeni mesaj oluştur
+            const msgElement = document.createElement('div');
+            msgElement.className = isError ? 'status-message error' : 'status-message';
+            msgElement.textContent = message;
+            document.body.appendChild(msgElement);
+
+            // 5 saniye sonra mesajı kaldır
+            setTimeout(() => {
+                if (msgElement.parentNode) {
+                    msgElement.remove();
+                }
+            }, 5000);
+        }
+
+        // Buton olay dinleyicileri
+        testLocationBtn.addEventListener('click', () => {
+            const lat = parseFloat(latitudeInput.value);
+            const lng = parseFloat(longitudeInput.value);
+            const altitude = parseFloat(altitudeInput.value);
+
+            updateLocation(lat, lng, altitude);
+            map.setView([lat, lng]);
+        });
+
+        centerMapBtn.addEventListener('click', () => {
+            if (userLocationMarker) {
+                map.setView(userLocationMarker.getLatLng());
+            } else {
+                map.setView(mapInfo.center);
+            }
+        });
+
+        // Haritaya tıklama ile konum seçme
+        map.on('click', e => {
+            const latlng = e.latlng;
+            latitudeInput.value = latlng.lat.toFixed(5);
+            longitudeInput.value = latlng.lng.toFixed(5);
+
+            // Otomatik olarak konumu test et
+            const altitude = parseFloat(altitudeInput.value);
+            updateLocation(latlng.lat, latlng.lng, altitude);
+
+            showStatusMessage(`Konum seçildi: ${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)}`, false);
+        });
+
+        // Sayfa yüklendiğinde
+        window.addEventListener('load', () => {
+            showStatusMessage("Kapı Bulucu yüklendi. Haritaya tıklayarak veya form alanlarını doldurarak test edebilirsiniz.", false);
+        });
+    </script>
+</body>
+
+</html>

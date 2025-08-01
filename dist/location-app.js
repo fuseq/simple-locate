@@ -85,15 +85,16 @@ function loadFloorDoors(floorKey) {
             resolve([]);
             return;
         }
+
         fetch(floorAltitudes[floorKey].svg)
-            .then((res) => res.text())
-            .then((svgText) => {
+            .then(res => res.text())
+            .then(svgText => {
                 const parser = new DOMParser();
                 const svgDoc = parser.parseFromString(svgText, "image/svg+xml");
 
                 const doorsGroup = svgDoc.querySelector("g#Doors");
                 if (!doorsGroup) {
-                    console.warn("SVG'de 'Doors' grubu bulunamadı");
+                    console.warn(`SVG'de 'Doors' grubu bulunamadı: ${floorKey}`);
                     resolve([]);
                     return;
                 }
@@ -107,20 +108,25 @@ function loadFloorDoors(floorKey) {
                     const x2 = parseFloat(lineElem.getAttribute("x2"));
                     const y2 = parseFloat(lineElem.getAttribute("y2"));
 
+                    // SVG'deki line elementinin gerçek ID'sini kullan
+                    // Eğer ID yoksa index ile bir ID oluştur
+                    const lineId = lineElem.getAttribute("id") || `${floorKey}-${index + 1}`;
+
                     const start = svgCoordToLatLng(x1, y1);
                     const end = svgCoordToLatLng(x2, y2);
 
                     doorLines.push({
-                        id: `door-${floorKey}-${index + 1}`,
+                        id: lineId, // SVG'deki gerçek line ID'si
                         start,
-                        end,
+                        end
                     });
                 });
 
                 resolve(doorLines);
             })
-            .catch((err) => {
-                console.error("SVG yüklenirken hata:", err);
+            .catch(err => {
+                console.error(`SVG yüklenirken hata (${floorKey}):`, err);
+                showStatusMessage(`SVG yüklenemedi: ${err.message}`, true);
                 resolve([]);
             });
     });
@@ -223,19 +229,19 @@ const weiYeInfoControl = createWeiYeInfoControl();
 const control = new L.Control.SimpleLocate({
     position: "topleft",
 
-    medianWindowSize: 3,                // 7'den 3'e düşürüldü - daha az veri noktası
-    kalmanProcessNoise: 0.05,           // 0.01'den 0.05'e çıkarıldı - daha hızlı değişim
-    kalmanMeasurementNoise: 0.2,        // 0.1'den 0.2'ye çıkarıldı - daha az filtreleme
-    jumpThreshold: 0.0005,              // 0.0001'den 0.0005'e çıkarıldı - daha az sıçrama tespiti
-    showFilterInfo: false,              // Debug için
-    enableFiltering: true,              // Filtreleme aktif
-    showFilterDebug: false,             // Debug görselleştirmesi kapalı
-    showJumpWarnings: false,            // Sıçrama uyarıları kapalı - performans için
-    lowPassFilterTau: 0.5,              // 1.0'dan 0.5'e düşürüldü - daha az yumuşatma
-    enableLowPassFilter: true,          // Low-pass filtre aktif
+    medianWindowSize: 3,
+    kalmanProcessNoise: 0.05,
+    kalmanMeasurementNoise: 0.2,
+    jumpThreshold: 0.0005,
+    showFilterInfo: false,
+    enableFiltering: true,
+    showFilterDebug: false,
+    showJumpWarnings: false,
+    lowPassFilterTau: 0.5,
+    enableLowPassFilter: true,
 
     afterDeviceMove: (location) => {
-        // navigator.geolocation'dan altitude al
+
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const altitude =
@@ -252,7 +258,7 @@ const control = new L.Control.SimpleLocate({
                         control._weiYeState?.filteringStats.totalUpdates < 3,
                 });
 
-                // Kat ve kapı verisi için kullanıcı konumu güncelleme
+
                 onUserLocationUpdate(lat, lng, altitude);
             },
             () => {
