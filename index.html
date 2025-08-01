@@ -381,6 +381,102 @@
         };
         
         // Wei Ye filtreleme panel kontrolleri
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         const filterPanel = document.getElementById('filterPanel');
         const togglePanel = document.getElementById('togglePanel');
         const applyFilters = document.getElementById('applyFilters');
@@ -441,10 +537,12 @@
             };
             
             // SimpleLocate nesnesinin seçeneklerini güncelle
-            if (window.control) {
+
+            if (window.filterControl) {
                 // Tüm ayarları güncelle
                 Object.keys(settings).forEach(key => {
-                    window.control.options[key] = settings[key];
+
+                    window.filterControl.options[key] = settings[key];
                 });
                 
                 // Uygulama bilgisi
@@ -473,9 +571,11 @@
             });
             
             // Varsayılan ayarları uygula
-            if (window.control) {
+
+            if (window.filterControl) {
                 Object.keys(defaultFilters).forEach(key => {
-                    window.control.options[key] = defaultFilters[key];
+
+                    window.filterControl.options[key] = defaultFilters[key];
                 });
                 
                 showStatusMessage('Varsayılan değerler yüklendi');
@@ -498,6 +598,46 @@
                 }
             }, 3000);
         }
+
+        // DOMContentLoaded olayı en sonda tanımlanmalı
+        document.addEventListener('DOMContentLoaded', function() {
+            // Sayfa tamamen yüklendikten 500ms sonra kontrol değişkenini global scope'a taşı
+            setTimeout(() => {
+                try {
+                    // location-app.js'deki control değişkenini window nesnesine aktar
+                    window.filterControl = control;
+                    console.log("SimpleLocate kontrolü window.filterControl'e aktarıldı ve hazır.");
+
+                    // İlk bulunan kontrolün parametrelerini al
+                    const currentSettings = {};
+                    Object.keys(defaultFilters).forEach(key => {
+                        if (window.filterControl && window.filterControl.options) {
+                            currentSettings[key] = window.filterControl.options[key];
+                            // UI elemanlarını güncelleyelim
+                            if (key === 'medianWindowSize' || key === 'kalmanProcessNoise' ||
+                                key === 'kalmanMeasurementNoise' || key === 'jumpThreshold' ||
+                                key === 'lowPassFilterTau') {
+
+                                const input = document.getElementById(key);
+                                if (input) {
+                                    input.value = currentSettings[key];
+                                    input.nextElementSibling.textContent = currentSettings[key];
+                                }
+                            } else if (key === 'enableFiltering' || key === 'enableLowPassFilter' ||
+                                       key === 'showJumpWarnings') {
+
+                                const checkbox = document.getElementById(key);
+                                if (checkbox) {
+                                    checkbox.checked = currentSettings[key];
+                                }
+                            }
+                        }
+                    });
+                } catch (e) {
+                    console.error("SimpleLocate kontrolüne erişim sağlanamadı:", e);
+                }
+            }, 500);
+        });
     </script>
 </body>
 
