@@ -147,7 +147,7 @@ function createWeiYeInfoControl() {
                 <div class="wei-ye-info-panel">
                     <div class="wei-ye-title">
                         Konum Bilgisi
-                        <small style="opacity: 0.7; font-weight: normal; font-size: 90%;">Filtrelenmiş</small>
+                        
                     </div>
                     <div class="wei-ye-stats">
                         <div>Doğruluk: <span class="accuracy-value">--</span> m</div>
