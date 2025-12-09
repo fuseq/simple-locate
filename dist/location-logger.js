@@ -292,22 +292,16 @@ class LocationLogger {
         
         if (totalLogsEl) totalLogsEl.textContent = this.logs.length;
         if (jumpCountEl) jumpCountEl.textContent = jumpCount;
-
-        if (!this.logContainer) {
-            this.logContainer = document.getElementById('logContainer');
-        }
         
         this.updateLogList();
     }
 
     
     updateLogList() {
+        this.logContainer = document.getElementById('logContainer');
         if (!this.logContainer) {
-            this.logContainer = document.getElementById('logContainer');
-            if (!this.logContainer) {
-                console.warn('Location Logger: logContainer bulunamadı');
-                return;
-            }
+            console.warn('Location Logger: logContainer bulunamadı, bottom sheet henüz oluşturulmamış olabilir');
+            return;
         }
 
         if (this.logs.length === 0) {
@@ -407,14 +401,14 @@ class LocationLogger {
         this.bottomSheet.classList.add('active');
         document.body.style.overflow = 'hidden';
         
-        if (!this.logContainer) {
-            this.logContainer = document.getElementById('logContainer');
-        }
+        this.logContainer = document.getElementById('logContainer');
         
         if (this.logs.length > 0) {
             setTimeout(() => {
                 this.updateLogList();
-            }, 100);
+            }, 50);
+        } else {
+            this.updateLogList();
         }
     }
 
@@ -430,9 +424,7 @@ class LocationLogger {
             this.logs = [];
             this.lastPosition = null;
             
-            if (!this.logContainer) {
-                this.logContainer = document.getElementById('logContainer');
-            }
+            this.logContainer = document.getElementById('logContainer');
             
             this.updateUI();
             
