@@ -1,6 +1,4 @@
-/* Location Logger Styles */
 
-/* Log Button Container - Sağ Alt Köşe */
 .location-logger-button-container {
     position: fixed;
     bottom: 20px;
@@ -107,7 +105,7 @@
     transform: translateY(0);
 }
 
-/* Header */
+
 .location-logger-header {
     display: flex;
     justify-content: space-between;

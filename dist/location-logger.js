@@ -1,13 +1,10 @@
 "use strict";
 
-/**
- * Konum Loglama Componenti
- * GPS koordinatlarını loglar ve sıçrama/sapma tespiti yapar
- */
+
 class LocationLogger {
     constructor(options = {}) {
         this.logs = [];
-        this.maxLogs = options.maxLogs || 1000; // Maksimum log sayısı
+        this.maxLogs = options.maxLogs || 10000; // Maksimum log sayısı
         this.isLogging = false;
         this.lastPosition = null;
         this.jumpThreshold = options.jumpThreshold || 10; // Metre cinsinden sıçrama eşiği
@@ -23,7 +20,7 @@ class LocationLogger {
     }
 
     init() {
-        // DOM hazır olana kadar bekle
+        
         const initUI = () => {
             try {
                 this.createUI();
@@ -31,7 +28,7 @@ class LocationLogger {
                 console.log('Location Logger UI başarıyla oluşturuldu');
             } catch (error) {
                 console.error('Location Logger UI oluşturulurken hata:', error);
-                // Hata durumunda tekrar dene
+                
                 setTimeout(initUI, 500);
             }
         };
@@ -39,23 +36,20 @@ class LocationLogger {
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initUI);
         } else {
-            // DOM zaten hazır, kısa bir gecikme ile başlat
+           
             setTimeout(initUI, 100);
         }
     }
 
-    /**
-     * UI elementlerini oluştur
-     */
     createUI() {
-        // Eğer zaten oluşturulmuşsa tekrar oluşturma
+        
         if (document.getElementById('locationLoggerButton')) {
             this.logButton = document.getElementById('locationLoggerButton');
             this.logCountBadge = document.getElementById('logCountBadge');
             return;
         }
 
-        // Sağ alt köşe log butonu
+      
         const buttonContainer = document.createElement('div');
         buttonContainer.className = 'location-logger-button-container';
         buttonContainer.innerHTML = `
@@ -70,7 +64,7 @@ class LocationLogger {
         
         console.log('Location Logger UI oluşturuldu', this.logButton);
 
-        // Bottom Sheet - Eğer zaten varsa tekrar oluşturma
+        
         let bottomSheet = document.getElementById('locationLoggerBottomSheet');
         if (!bottomSheet) {
             bottomSheet = document.createElement('div');
@@ -129,74 +123,65 @@ class LocationLogger {
         console.log('Location Logger Bottom Sheet oluşturuldu', this.bottomSheet);
     }
 
-    /**
-     * Event listener'ları ekle
-     */
+  
     attachEvents() {
-        // Log butonu kontrolü
+       
         if (!this.logButton) {
             console.error('Location Logger: Log butonu bulunamadı!');
             return;
         }
 
-        // Log butonu tıklama
+        
         this.logButton.addEventListener('click', () => {
             console.log('Location Logger butonu tıklandı');
             this.toggleBottomSheet();
         });
 
-        // Overlay tıklama (kapatma)
+       
         const overlay = this.bottomSheet.querySelector('.location-logger-overlay');
         overlay.addEventListener('click', () => {
             this.closeBottomSheet();
         });
 
-        // Kapat butonu
+        
         const closeBtn = document.getElementById('closeLoggerBtn');
         closeBtn.addEventListener('click', () => {
             this.closeBottomSheet();
         });
 
-        // Loglamayı durdur/başlat butonu
+        
         const toggleLoggingBtn = document.getElementById('toggleLoggingBtn');
         toggleLoggingBtn.addEventListener('click', () => {
             this.toggleLogging();
         });
 
-        // Temizle butonu
+        
         const clearBtn = document.getElementById('clearLogsBtn');
         clearBtn.addEventListener('click', () => {
             this.clearLogs();
         });
 
-        // Dışa aktar butonu
+        
         const exportBtn = document.getElementById('exportLogsBtn');
         exportBtn.addEventListener('click', () => {
             this.exportLogs();
         });
     }
 
-    /**
-     * Loglama başlat
-     */
+   
     startLogging() {
         this.isLogging = true;
         this.updateLoggingStatus(true);
         this.updateToggleButton();
     }
 
-    /**
-     * Loglama durdur
-     */
+   
     stopLogging() {
         this.isLogging = false;
         this.updateLoggingStatus(false);
         this.updateToggleButton();
     }
 
-    /**
-     * Loglamayı durdur/başlat (toggle)
-     */
     toggleLogging() {
         if (this.isLogging) {
             this.stopLogging();
@@ -205,9 +190,7 @@ class LocationLogger {
         }
     }
 
-    /**
-     * Toggle butonunun ikonunu güncelle
-     */
+  
     updateToggleButton() {
         const toggleIcon = document.getElementById('toggleLoggingIcon');
         const toggleBtn = document.getElementById('toggleLoggingBtn');
@@ -222,9 +205,6 @@ class LocationLogger {
         }
     }
 
-    /**
-     * Yeni konum logla
-     */
     logLocation(locationData) {
         if (!this.isLogging) {
             return;
@@ -243,10 +223,10 @@ class LocationLogger {
             isFiltered: locationData.isFiltered || false,
             distance: null,
             deviation: null,
-            type: 'normal' // normal, jump, deviation
+            type: 'normal' 
         };
 
-        // Önceki konumla mesafe hesapla
+        
         if (this.lastPosition) {
             const distance = this.calculateDistance(
                 this.lastPosition.lat,
@@ -256,13 +236,13 @@ class LocationLogger {
             );
             logEntry.distance = distance;
 
-            // Sıçrama tespiti
+           
             if (distance > this.jumpThreshold) {
                 logEntry.type = 'jump';
                 logEntry.isJump = true;
             }
 
-            // Sapma tespiti (accuracy'ye göre)
+           
             if (logEntry.accuracy && distance > Math.max(this.deviationThreshold, logEntry.accuracy * 0.5)) {
                 if (logEntry.type === 'normal') {
                     logEntry.type = 'deviation';
@@ -271,29 +251,26 @@ class LocationLogger {
             }
         }
 
-        // Log ekle - En yeni en altta (chronological order)
+       
         this.logs.push(logEntry);
 
-        // Maksimum log sayısını kontrol et
         if (this.logs.length > this.maxLogs) {
-            this.logs = this.logs.slice(-this.maxLogs); // En eski logları sil
+            this.logs = this.logs.slice(-this.maxLogs); 
         }
 
-        // Son konumu güncelle
+       
         this.lastPosition = {
             lat: logEntry.lat,
             lng: logEntry.lng
         };
 
-        // UI güncelle
+       
         this.updateUI();
     }
 
-    /**
-     * İki koordinat arasındaki mesafeyi hesapla (metre)
-     */
+  
     calculateDistance(lat1, lng1, lat2, lng2) {
-        const R = 6371000; // Dünya yarıçapı (metre)
+        const R = 6371000; 
         const dLat = this.toRad(lat2 - lat1);
         const dLng = this.toRad(lng2 - lng1);
         const a =
@@ -306,18 +283,14 @@ class LocationLogger {
         return R * c;
     }
 
-    /**
-     * Dereceyi radyana çevir
-     */
+   
     toRad(degrees) {
         return (degrees * Math.PI) / 180;
     }
 
-    /**
-     * UI'ı güncelle
-     */
+ 
     updateUI() {
-        // Badge güncelle
+       
         if (this.logCountBadge) {
             this.logCountBadge.textContent = this.logs.length;
             if (this.logs.length > 0) {
@@ -325,7 +298,7 @@ class LocationLogger {
             }
         }
 
-        // İstatistikleri güncelle
+     
         const jumpCount = this.logs.filter(log => log.type === 'jump').length;
         const deviationCount = this.logs.filter(log => log.type === 'deviation').length;
         
@@ -337,13 +310,11 @@ class LocationLogger {
         if (jumpCountEl) jumpCountEl.textContent = jumpCount;
         if (deviationCountEl) deviationCountEl.textContent = deviationCount;
 
-        // Log listesini güncelle
+        
         this.updateLogList();
     }
 
-    /**
-     * Log listesini güncelle
-     */
+    
     updateLogList() {
         if (this.logs.length === 0) {
             this.logContainer.innerHTML = '<div class="location-logger-empty">Henüz log kaydı yok</div>';
@@ -353,13 +324,10 @@ class LocationLogger {
         const logHTML = this.logs.map(log => this.createLogItemHTML(log)).join('');
         this.logContainer.innerHTML = logHTML;
 
-        // Scroll'u en alta al (en son eklenen logu göster)
+        
         this.logContainer.scrollTop = this.logContainer.scrollHeight;
     }
 
-    /**
-     * Log item HTML'i oluştur
-     */
     createLogItemHTML(log) {
         const timeStr = log.timestamp.toLocaleTimeString('tr-TR');
         const dateStr = log.timestamp.toLocaleDateString('tr-TR');
@@ -432,9 +400,7 @@ class LocationLogger {
         `;
     }
 
-    /**
-     * Bottom sheet'i aç/kapat
-     */
+  
     toggleBottomSheet() {
         if (this.bottomSheet.classList.contains('active')) {
             this.closeBottomSheet();
@@ -443,40 +409,32 @@ class LocationLogger {
         }
     }
 
-    /**
-     * Bottom sheet'i aç
-     */
+  
     openBottomSheet() {
         this.bottomSheet.classList.add('active');
         document.body.style.overflow = 'hidden';
     }
 
-    /**
-     * Bottom sheet'i kapat
-     */
+    
     closeBottomSheet() {
         this.bottomSheet.classList.remove('active');
         document.body.style.overflow = '';
     }
 
-    /**
-     * Logları temizle
-     */
+    
     clearLogs() {
         if (confirm('Tüm logları temizlemek istediğinize emin misiniz?')) {
             this.logs = [];
             this.lastPosition = null;
             this.updateUI();
-            // Scroll'u sıfırla
+           
             if (this.logContainer) {
                 this.logContainer.scrollTop = 0;
             }
         }
     }
 
-    /**
-     * Logları dışa aktar (JSON)
-     */
+   
     exportLogs() {
         if (this.logs.length === 0) {
             alert('Dışa aktarılacak log bulunamadı.');
@@ -495,9 +453,7 @@ class LocationLogger {
         URL.revokeObjectURL(url);
     }
 
-    /**
-     * Loglama durumunu güncelle
-     */
+  
     updateLoggingStatus(isLogging) {
         const statusEl = document.getElementById('loggingStatus');
         if (statusEl) {
@@ -513,6 +469,6 @@ class LocationLogger {
     }
 }
 
-// Global olarak erişilebilir yap
+
 window.LocationLogger = LocationLogger;
 
