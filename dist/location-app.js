@@ -225,6 +225,44 @@ function createWeiYeInfoControl() {
 // 9. Wei Ye kontrol panelini oluştur
 const weiYeInfoControl = createWeiYeInfoControl();
 
+// 9.5. Location Logger oluştur
+let locationLogger = null;
+
+// LocationLogger'ı DOM hazır olduğunda başlat
+function initLocationLogger() {
+    if (typeof LocationLogger !== 'undefined') {
+        locationLogger = new LocationLogger({
+            maxLogs: 1000,
+            jumpThreshold: 10, // 10 metre sıçrama eşiği
+            deviationThreshold: 5 // 5 metre sapma eşiği
+        });
+        console.log('Location Logger başlatıldı');
+    } else {
+        console.warn('LocationLogger sınıfı bulunamadı, tekrar deneniyor...');
+        setTimeout(initLocationLogger, 100);
+    }
+}
+
+// DOMContentLoaded bekleyerek başlat
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('DOMContentLoaded - Location Logger başlatılıyor...');
+        initLocationLogger();
+    });
+} else {
+    // DOM zaten hazır
+    console.log('DOM hazır - Location Logger başlatılıyor...');
+    initLocationLogger();
+}
+
+// Alternatif olarak window load event'inde de dene
+window.addEventListener('load', () => {
+    if (!locationLogger && typeof LocationLogger !== 'undefined') {
+        console.log('Window load - Location Logger başlatılıyor...');
+        initLocationLogger();
+    }
+});
+
 // 10. SimpleLocate kontrolü
 const control = new L.Control.SimpleLocate({
     position: "topleft",
@@ -258,6 +296,18 @@ const control = new L.Control.SimpleLocate({
                         control._weiYeState?.filteringStats.totalUpdates < 3,
                 });
 
+                // Location Logger'a log ekle
+                if (locationLogger) {
+                    locationLogger.logLocation({
+                        lat: lat,
+                        lng: lng,
+                        accuracy: location.accuracy,
+                        altitude: altitude,
+                        angle: location.angle,
+                        isJump: location.isJump,
+                        isFiltered: location.isFiltered
+                    });
+                }
 
                 onUserLocationUpdate(lat, lng, altitude);
             },
@@ -269,6 +319,20 @@ const control = new L.Control.SimpleLocate({
                     initializing:
                         control._weiYeState?.filteringStats.totalUpdates < 3,
                 });
+                
+                // Location Logger'a log ekle (altitude olmadan)
+                if (locationLogger) {
+                    locationLogger.logLocation({
+                        lat: location.lat,
+                        lng: location.lng,
+                        accuracy: location.accuracy,
+                        altitude: NaN,
+                        angle: location.angle,
+                        isJump: location.isJump,
+                        isFiltered: location.isFiltered
+                    });
+                }
+                
                 // Altitude alınamazsa da konumu güncelle (altitude NaN)
                 onUserLocationUpdate(location.lat, location.lng, NaN);
             }
@@ -278,6 +342,12 @@ const control = new L.Control.SimpleLocate({
     afterClick: (status) => {
         console.log("Geolocation status:", status.geolocation);
         console.log("Orientation status:", status.orientation);
+        
+        // Konum başlatıldığında loglamayı başlat
+        if (status.geolocation && locationLogger) {
+            locationLogger.startLogging();
+        }
+        
         if (!status.geolocation) {
             L.popup()
                 .setLatLng(map.getCenter())
