@@ -311,7 +311,10 @@ class LocationLogger {
         // Referansı güncelle
         this.logContainer = logContainer;
 
-        if (this.logs.length === 0) {
+        // Debug için log sayısını kontrol et
+        console.log('updateLogList çağrıldı, log sayısı:', this.logs.length);
+
+        if (!this.logs || this.logs.length === 0) {
             this.logContainer.innerHTML = '<div class="location-logger-empty">Henüz log kaydı yok</div>';
             return;
         }
@@ -323,6 +326,7 @@ class LocationLogger {
             .map(log => this.createLogItemHTML(log))
             .join('');
         
+        console.log('Log HTML oluşturuldu, uzunluk:', logHTML.length);
         this.logContainer.innerHTML = logHTML;
 
         // En üste scroll et (çünkü en yeni loglar üstte)
@@ -334,71 +338,87 @@ class LocationLogger {
     }
 
     createLogItemHTML(log) {
-        const timeStr = log.timestamp.toLocaleTimeString('tr-TR');
-        const dateStr = log.timestamp.toLocaleDateString('tr-TR');
-        
-        let typeClass = '';
-        let typeIcon = '';
-        let typeLabel = '';
+        try {
+            // Timestamp kontrolü ve dönüşümü
+            const timestamp = log.timestamp instanceof Date ? log.timestamp : new Date(log.timestamp);
+            const timeStr = timestamp.toLocaleTimeString('tr-TR');
+            const dateStr = timestamp.toLocaleDateString('tr-TR');
+            
+            let typeClass = '';
+            let typeIcon = '';
+            let typeLabel = '';
 
-        if (log.type === 'jump') {
-            typeClass = 'log-item-jump';
-            typeIcon = '⚠️';
-            typeLabel = 'Sıçrama';
-        } else {
-            typeClass = 'log-item-normal';
-            typeIcon = '📍';
-            typeLabel = 'Normal';
+            if (log.type === 'jump') {
+                typeClass = 'log-item-jump';
+                typeIcon = '⚠️';
+                typeLabel = 'Sıçrama';
+            } else {
+                typeClass = 'log-item-normal';
+                typeIcon = '📍';
+                typeLabel = 'Normal';
+            }
+
+            const distanceStr = log.distance !== null && log.distance !== undefined ? `${log.distance.toFixed(2)} m` : '-';
+            const accuracyStr = log.accuracy !== null && log.accuracy !== undefined ? `${log.accuracy.toFixed(1)} m` : '-';
+            const altitudeStr = log.altitude !== null && !isNaN(log.altitude) ? `${log.altitude.toFixed(1)} m` : '-';
+
+            return `
+                <div class="location-logger-item ${typeClass}" data-log-id="${log.id}">
+                    <div class="log-item-header">
+                        <span class="log-item-type">${typeIcon} ${typeLabel}</span>
+                        <span class="log-item-time">${timeStr}</span>
+                    </div>
+                    <div class="log-item-body">
+                        <div class="log-item-coords">
+                            <div class="coord-item">
+                                <span class="coord-label">Lat:</span>
+                                <span class="coord-value">${log.lat.toFixed(7)}</span>
+                            </div>
+                            <div class="coord-item">
+                                <span class="coord-label">Lng:</span>
+                                <span class="coord-value">${log.lng.toFixed(7)}</span>
+                            </div>
+                        </div>
+                        <div class="log-item-info">
+                            <div class="info-item">
+                                <span class="info-label">Mesafe:</span>
+                                <span class="info-value">${distanceStr}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Doğruluk:</span>
+                                <span class="info-value">${accuracyStr}</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Yükseklik:</span>
+                                <span class="info-value">${altitudeStr}</span>
+                            </div>
+                            ${log.angle !== null && log.angle !== undefined ? `
+                            <div class="info-item">
+                                <span class="info-label">Açı:</span>
+                                <span class="info-value">${log.angle.toFixed(1)}°</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                        ${log.isFiltered ? '<div class="log-item-badge filtered">Filtrelenmiş</div>' : ''}
+                    </div>
+                    <div class="log-item-footer">
+                        <span class="log-item-date">${dateStr}</span>
+                    </div>
+                </div>
+            `;
+        } catch (error) {
+            console.error('createLogItemHTML hatası:', error, 'Log:', log);
+            return `
+                <div class="location-logger-item log-item-normal">
+                    <div class="log-item-header">
+                        <span class="log-item-type">❌ Hata</span>
+                    </div>
+                    <div class="log-item-body">
+                        <div class="log-item-coords">Log verisi hatalı</div>
+                    </div>
+                </div>
+            `;
         }
-
-        const distanceStr = log.distance !== null ? `${log.distance.toFixed(2)} m` : '-';
-        const accuracyStr = log.accuracy !== null ? `${log.accuracy.toFixed(1)} m` : '-';
-        const altitudeStr = log.altitude !== null && !isNaN(log.altitude) ? `${log.altitude.toFixed(1)} m` : '-';
-
-        return `
-            <div class="location-logger-item ${typeClass}" data-log-id="${log.id}">
-                <div class="log-item-header">
-                    <span class="log-item-type">${typeIcon} ${typeLabel}</span>
-                    <span class="log-item-time">${timeStr}</span>
-                </div>
-                <div class="log-item-body">
-                    <div class="log-item-coords">
-                        <div class="coord-item">
-                            <span class="coord-label">Lat:</span>
-                            <span class="coord-value">${log.lat.toFixed(7)}</span>
-                        </div>
-                        <div class="coord-item">
-                            <span class="coord-label">Lng:</span>
-                            <span class="coord-value">${log.lng.toFixed(7)}</span>
-                        </div>
-                    </div>
-                    <div class="log-item-info">
-                        <div class="info-item">
-                            <span class="info-label">Mesafe:</span>
-                            <span class="info-value">${distanceStr}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Doğruluk:</span>
-                            <span class="info-value">${accuracyStr}</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="info-label">Yükseklik:</span>
-                            <span class="info-value">${altitudeStr}</span>
-                        </div>
-                        ${log.angle !== null ? `
-                        <div class="info-item">
-                            <span class="info-label">Açı:</span>
-                            <span class="info-value">${log.angle.toFixed(1)}°</span>
-                        </div>
-                        ` : ''}
-                    </div>
-                    ${log.isFiltered ? '<div class="log-item-badge filtered">Filtrelenmiş</div>' : ''}
-                </div>
-                <div class="log-item-footer">
-                    <span class="log-item-date">${dateStr}</span>
-                </div>
-            </div>
-        `;
     }
 
   
@@ -412,16 +432,19 @@ class LocationLogger {
 
   
     openBottomSheet() {
+        console.log('openBottomSheet çağrıldı, log sayısı:', this.logs.length);
         this.bottomSheet.classList.add('active');
         document.body.style.overflow = 'hidden';
         
         // Container'ı her açıldığında yeniden al
         this.logContainer = document.getElementById('logContainer');
+        console.log('logContainer bulundu:', !!this.logContainer);
         
-        // Her zaman güncel log listesini göster
+        // Hem hemen hem de bir tick sonra çağır (rendering sorunları için)
+        this.updateLogList();
         setTimeout(() => {
             this.updateLogList();
-        }, 50);
+        }, 100);
     }
 
     
