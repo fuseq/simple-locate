@@ -198,7 +198,7 @@
                     maxJumpDistance: 0
                 }
             };
-            
+
             // Hareket tespiti için ayrı geçmiş (Low Pass filtrelenmiş konumlar)
             this._movementHistory = {
                 positions: [],
@@ -208,6 +208,12 @@
 
             // Filtreleme hata ayıklama için görsel öğeler
             this._rawPositionMarker = undefined;
+
+            // Loglama sistemi
+            this._logEnabled = false;
+            this._logs = [];
+            this._maxLogs = 1000; // Maksimum log sayısı
+            this._lastLoggedPosition = null;
         },
 
         // Median Filtreyi uygula
@@ -220,21 +226,21 @@
             if (m.timestampHistory.length > 0) {
                 const lastTimestamp = m.timestampHistory[m.timestampHistory.length - 1];
                 const timeDiff = Math.abs(now - lastTimestamp) / 1000; // saniye cinsinden
-                
+
                 // iOS'ta bazen timestamp'ler düzgün gelmeyebilir veya çok büyük gecikmeler olabilir
                 // Eğer 30 saniyeden fazla geçtiyse ve büyük bir mesafe varsa, geçmişi temizle
                 if (timeDiff > 30 && m.latHistory.length > 0) {
                     const lastLat = m.latHistory[m.latHistory.length - 1];
                     const lastLng = m.lngHistory[m.lngHistory.length - 1];
                     const distance = L.latLng(lastLat, lastLng).distanceTo(L.latLng(position.latitude, position.longitude));
-                    
+
                     if (distance > 50) {
                         // iOS'ta büyük bir sıçrama ve uzun gecikme varsa, geçmişi temizle
                         m.latHistory = [];
                         m.lngHistory = [];
                         m.accuracyHistory = [];
                         m.timestampHistory = [];
-                        
+
                         if (this.options.showFilterInfo) {
                             console.log(`Median Filter: iOS - Büyük sıçrama ve gecikme tespit edildi, geçmiş temizlendi`);
                         }
@@ -283,21 +289,21 @@
             const sortedAcc = [...m.accuracyHistory].sort((a, b) => a - b);
 
             const midIndex = Math.floor(sortedLat.length / 2);
-            
+
             const medianLat = sortedLat[midIndex];
             const medianLng = sortedLng[midIndex];
-            
+
 
             const medianDistance = L.latLng(position.latitude, position.longitude)
                 .distanceTo(L.latLng(medianLat, medianLng));
-            
-            const maxAllowedDistance = Math.max(position.accuracy * 1.5, 15); 
-            
+
+            const maxAllowedDistance = Math.max(position.accuracy * 1.5, 15);
+
             if (medianDistance > maxAllowedDistance) {
-             
+
                 const normalizedDistance = Math.min(1.0, medianDistance / (maxAllowedDistance * 2));
                 const blendFactor = Math.min(0.7, Math.max(0.3, 0.3 + normalizedDistance * 0.4));
-                
+
                 return {
                     latitude: blendFactor * position.latitude + (1 - blendFactor) * medianLat,
                     longitude: blendFactor * position.longitude + (1 - blendFactor) * medianLng,
@@ -355,7 +361,7 @@
 
                     // Filtre başlatıldı
                     this._lowPassFilterInitialized = true;
-                    
+
                     // Son timestamp'i kaydet (iOS için)
                     this._lastLowPassTimestamp = position.timestamp || Date.now();
 
@@ -365,20 +371,20 @@
                     // iOS için özel düzeltme: Timestamp farkını kullanarak örnekleme frekansını hesapla
                     const currentTimestamp = position.timestamp || Date.now();
                     const timeDiff = Math.abs(currentTimestamp - (this._lastLowPassTimestamp || currentTimestamp)) / 1000; // saniye cinsinden
-                    
+
                     // iOS'ta timestamp'ler bazen düzgün gelmeyebilir veya çok büyük gecikmeler olabilir
                     // Eğer zaman farkı çok küçükse (< 0.1s) veya çok büyükse (> 60s), varsayılan değeri kullan
                     let actualSampleFrequency = 1.0;
                     if (timeDiff > 0.1 && timeDiff < 60) {
                         actualSampleFrequency = 1.0 / timeDiff;
                     }
-                    
+
                     // Örnekleme frekansını güncelle (iOS için)
                     if (this._lowPassFilterLat.setSampleFrequency) {
                         this._lowPassFilterLat.setSampleFrequency(actualSampleFrequency);
                         this._lowPassFilterLng.setSampleFrequency(actualSampleFrequency);
                     }
-                    
+
                     // Timestamp'i güncelle
                     this._lastLowPassTimestamp = currentTimestamp;
 
@@ -400,7 +406,7 @@
                         // Düşük doğrulukta daha agresif filtreleme
                         dynamicTau = Math.min(3.0, dynamicTau * 1.5);
                     }
-                    
+
                     // iOS için özel düzeltme: Eğer zaman farkı çok büyükse (> 10s),
                     // tau değerini düşür (daha hızlı adapte ol)
                     if (timeDiff > 10) {
@@ -418,20 +424,20 @@
                     // Filtrelenmiş değerleri al
                     const filteredLat = this._lowPassFilterLat.lastOutput();
                     const filteredLng = this._lowPassFilterLng.lastOutput();
-                    
+
                     // iOS için özel düzeltme: Eğer filtrelenmiş değer ham değerden çok uzaksa,
                     // iOS'ta kuzeye kayma sorunu olabilir, filtrelenmiş değeri sınırla
                     const filteredDistance = L.latLng(position.latitude, position.longitude)
                         .distanceTo(L.latLng(filteredLat, filteredLng));
-                    
+
                     const maxAllowedDistance = Math.max(position.accuracy * 1.5, 15); // En az 15m
-                    
+
                     if (filteredDistance > maxAllowedDistance) {
                         // Dinamik blend faktörü: Mesafe ve accuracy'ye göre hesapla
                         // Mesafe arttıkça blend faktörü artar (daha fazla ham değer kullan)
                         const normalizedDistance = Math.min(1.0, filteredDistance / (maxAllowedDistance * 2));
                         const blendFactor = Math.min(0.8, Math.max(0.3, 0.3 + normalizedDistance * 0.5));
-                        
+
                         lowPassFiltered = {
                             latitude: blendFactor * position.latitude + (1 - blendFactor) * filteredLat,
                             longitude: blendFactor * position.longitude + (1 - blendFactor) * filteredLng,
@@ -439,7 +445,7 @@
                             timestamp: position.timestamp,
                             lpfApplied: true
                         };
-                        
+
                         if (this.options.showFilterInfo) {
                             console.log(`Low Pass Filter: iOS - Filtrelenmiş konum çok uzakta (${Math.round(filteredDistance)}m), dinamik blend uygulandı (${blendFactor.toFixed(2)})`);
                         }
@@ -462,7 +468,7 @@
 
             // Wei Ye algoritmasına Low Pass Filter'dan geçirilmiş veriyi gönder
             // NOT: Burada "position" yerine "lowPassFiltered" kullanıyoruz
-            
+
             // Hareket geçmişini güncelle (Low Pass filtrelenmiş konum ile)
             // Bu, hareket tespiti için kullanılacak
             this._updateMovementHistory(lowPassFiltered);
@@ -477,9 +483,9 @@
             const medianWindowSize = isLowAccuracy ? this.options.medianWindowSize : Math.max(3, Math.floor(this.options.medianWindowSize * 0.6));
             const originalWindowSize = this._medianFilter.windowSize;
             this._medianFilter.windowSize = medianWindowSize;
-            
+
             let medianFiltered = this._applyMedianFilter(lowPassFiltered);
-            
+
             // Pencere boyutunu geri yükle
             this._medianFilter.windowSize = originalWindowSize;
 
@@ -547,7 +553,7 @@
                 // Doğruluğa göre dinamik olarak Kalman filtre parametresini ayarla
                 const adaptiveR = Math.max(0.05, Math.min(0.5, lowPassFiltered.accuracy / 20));
                 this._kalmanFilter.R_lat = this._kalmanFilter.R_lng = adaptiveR;
-                
+
                 // Her zaman Low Pass filtrelenmiş değeri kullan (tutarlılık için)
                 kalmanInput = lowPassFiltered;
             }
@@ -565,6 +571,9 @@
                 isFiltered: true,
                 isJump: isJump
             };
+
+            // Loglama: Konum değişikliğini logla
+            this._logPositionChange(position, kalmanFiltered, isJump, jumpDistance);
 
             // Filtreleme görsellerini güncelle (opsiyonel)
             if (this.options.showFilterDebug) {
@@ -780,7 +789,7 @@
             this._lowPassFilterLng = null;
             this._lowPassFilterInitialized = false;
             this._lastLowPassTimestamp = null;
-            
+
             // Hareket geçmişini sıfırla
             this._movementHistory.positions = [];
             this._movementHistory.timestamps = [];
@@ -1096,7 +1105,7 @@
         // Kalman filtresini uygula
         _applyKalmanFilter: function (position) {
             const kf = this._kalmanFilter;
-            
+
             // İlk ölçümde Kalman filtresini başlat
             if (kf.x_lat === null || kf.x_lng === null) {
                 kf.x_lat = position.latitude;
@@ -1104,11 +1113,11 @@
                 // Başlangıç kovaryansını yüksek tut (belirsizlik yüksek)
                 kf.P_lat = 1.0;
                 kf.P_lng = 1.0;
-                
+
                 if (this.options.showFilterInfo) {
                     console.log('Kalman Filter: İlk ölçüm, filtrelenmiş değer:', position.latitude, position.longitude);
                 }
-                
+
                 return {
                     latitude: position.latitude,
                     longitude: position.longitude,
@@ -1116,30 +1125,30 @@
                     timestamp: position.timestamp
                 };
             }
-            
+
             // iOS için özel düzeltme: Eğer timestamp çok eskiyse veya çok büyük bir sıçrama varsa,
             // filtreyi sıfırla ve yeni konumu kabul et
             const lastPosition = this._weiYeState.lastFilteredPosition;
             if (lastPosition && position.timestamp) {
                 const timeDiff = Math.abs(position.timestamp - (lastPosition.timestamp || Date.now())) / 1000; // saniye cinsinden
-                
+
                 // iOS'ta bazen timestamp'ler düzgün gelmeyebilir veya çok büyük gecikmeler olabilir
                 // Eğer 30 saniyeden fazla geçtiyse ve büyük bir mesafe varsa, filtreyi sıfırla
                 if (timeDiff > 30) {
                     const distance = L.latLng(lastPosition.latitude, lastPosition.longitude)
                         .distanceTo(L.latLng(position.latitude, position.longitude));
-                    
+
                     if (distance > 50) {
                         // iOS'ta büyük bir sıçrama ve uzun gecikme varsa, filtreyi sıfırla
                         kf.x_lat = position.latitude;
                         kf.x_lng = position.longitude;
                         kf.P_lat = 1.0;
                         kf.P_lng = 1.0;
-                        
+
                         if (this.options.showFilterInfo) {
                             console.log('Kalman Filter: iOS - Büyük sıçrama ve gecikme tespit edildi, filtrelenmiş değer:', position.latitude, position.longitude);
                         }
-                        
+
                         return {
                             latitude: position.latitude,
                             longitude: position.longitude,
@@ -1149,54 +1158,54 @@
                     }
                 }
             }
-            
+
             // Kalman filtresi adımları
             // 1. Tahmin (Prediction)
             // Durum tahmini aynı kalır (durağan model varsayımı)
             const x_pred_lat = kf.x_lat;
             const x_pred_lng = kf.x_lng;
-            
+
             // Tahmin hatası kovaryansı artar (Q eklenir)
             const P_pred_lat = kf.P_lat + kf.Q_lat;
             const P_pred_lng = kf.P_lng + kf.Q_lng;
-            
+
             // 2. Güncelleme (Update)
             // Kalman kazancı
             const K_lat = P_pred_lat / (P_pred_lat + kf.R_lat);
             const K_lng = P_pred_lng / (P_pred_lng + kf.R_lng);
-            
+
             // Güncellenmiş durum tahmini
             kf.x_lat = x_pred_lat + K_lat * (position.latitude - x_pred_lat);
             kf.x_lng = x_pred_lng + K_lng * (position.longitude - x_pred_lng);
-            
+
             // Güncellenmiş tahmin hatası kovaryansı
             kf.P_lat = (1 - K_lat) * P_pred_lat;
             kf.P_lng = (1 - K_lng) * P_pred_lng;
-            
+
             // iOS için özel düzeltme: Eğer filtrelenmiş konum çok uzaklaşırsa, 
             // iOS'ta genellikle kuzeye kayma sorunu olabilir
             // Bu durumda filtrelenmiş değeri sınırla
             const filteredDistance = L.latLng(position.latitude, position.longitude)
                 .distanceTo(L.latLng(kf.x_lat, kf.x_lng));
-            
+
             // Eğer filtrelenmiş konum ham konumdan çok uzaksa (accuracy'nin 2 katından fazla),
             // iOS'ta bu genellikle bir hata işaretidir
             const maxAllowedDistance = Math.max(position.accuracy * 2, 20); // En az 20m
-            
+
             if (filteredDistance > maxAllowedDistance) {
                 // Dinamik blend faktörü: Mesafe ve accuracy'ye göre hesapla
                 // Mesafe arttıkça blend faktörü artar (daha fazla ham değer kullan)
                 const normalizedDistance = Math.min(1.0, filteredDistance / (maxAllowedDistance * 2));
                 const blendFactor = Math.min(0.85, Math.max(0.5, 0.5 + normalizedDistance * 0.35));
-                
+
                 kf.x_lat = blendFactor * position.latitude + (1 - blendFactor) * kf.x_lat;
                 kf.x_lng = blendFactor * position.longitude + (1 - blendFactor) * kf.x_lng;
-                
+
                 if (this.options.showFilterInfo) {
                     console.log('Kalman Filter: iOS - Filtrelenmiş konum çok uzakta, dinamik blend uygulandı:', Math.round(filteredDistance), 'm, blend:', blendFactor.toFixed(2));
                 }
             }
-            
+
             return {
                 latitude: kf.x_lat,
                 longitude: kf.x_lng,
@@ -1204,59 +1213,59 @@
                 timestamp: position.timestamp
             };
         },
-        
+
         // Kullanıcı hareketini tespit et
         // İyileştirme: Ayrı hareket geçmişi kullan (Low Pass filtrelenmiş konumlar)
         _detectUserMoving: function () {
             const mh = this._movementHistory;
-            
+
             // Geçmiş penceresinde yeterli veri yoksa, hareket halinde kabul et
             if (mh.positions.length < 3) {
                 return true; // Varsayılan olarak hareket halinde kabul et
             }
-            
+
             // Son birkaç ölçüm arasındaki mesafeyi hesapla
             let totalDistance = 0;
             let timeSpan = 0;
-            
+
             for (let i = 1; i < mh.positions.length; i++) {
                 const prevPos = mh.positions[i - 1];
                 const currPos = mh.positions[i];
-                
+
                 const distance = L.latLng(prevPos.latitude, prevPos.longitude)
                     .distanceTo(L.latLng(currPos.latitude, currPos.longitude));
                 totalDistance += distance;
-                
+
                 if (mh.timestamps[i] && mh.timestamps[i - 1]) {
                     timeSpan += Math.abs(mh.timestamps[i] - mh.timestamps[i - 1]);
                 }
             }
-            
+
             // iOS için özel düzeltme: iOS'ta timestamp'ler bazen düzgün gelmeyebilir
             // Eğer zaman aralığı çok küçükse veya çok büyükse, varsayılan olarak hareket halinde kabul et
             if (timeSpan < 100 || timeSpan > 60000) { // 100ms'den az veya 60 saniyeden fazla
                 return true;
             }
-            
+
             // Hızı hesapla (m/s)
             const avgSpeed = (totalDistance / (timeSpan / 1000)); // m/s
-            
+
             // 0.5 m/s'den fazla hareket varsa, hareket halinde kabul et
             return avgSpeed > 0.5;
         },
-        
+
         // Hareket geçmişini güncelle
         _updateMovementHistory: function (position) {
             const mh = this._movementHistory;
             const timestamp = position.timestamp || Date.now();
-            
+
             // Yeni konumu ekle
             mh.positions.push({
                 latitude: position.latitude,
                 longitude: position.longitude
             });
             mh.timestamps.push(timestamp);
-            
+
             // Maksimum boyutu aşarsa en eskisini kaldır
             while (mh.positions.length > mh.maxSize) {
                 mh.positions.shift();
@@ -1283,6 +1292,108 @@
 
             // 5 metreden az hareket olduysa, durağan kabul et
             return distance < 5;
+        },
+
+        // Loglama fonksiyonları
+        setLoggingEnabled: function (enabled) {
+            this._logEnabled = enabled;
+            return this;
+        },
+
+        getLogs: function () {
+            return this._logs.slice(); // Kopya döndür
+        },
+
+        clearLogs: function () {
+            this._logs = [];
+            this._lastLoggedPosition = null;
+            return this;
+        },
+
+        // Log ekle
+        _addLog: function (type, data) {
+            if (!this._logEnabled) return;
+
+            const logEntry = {
+                timestamp: Date.now(),
+                time: new Date().toLocaleTimeString('tr-TR'),
+                type: type, // 'position', 'jump', 'large_change', 'filter_applied'
+                data: data
+            };
+
+            this._logs.push(logEntry);
+
+            // Maksimum log sayısını aşarsa en eskisini kaldır
+            if (this._logs.length > this._maxLogs) {
+                this._logs.shift();
+            }
+
+            // Log event'i tetikle (UI güncellemesi için)
+            if (typeof window !== 'undefined' && window.dispatchEvent) {
+                window.dispatchEvent(new CustomEvent('locationLogUpdated', {
+                    detail: logEntry
+                }));
+            }
+        },
+
+        // Konum değişikliğini logla
+        _logPositionChange: function (rawPosition, filteredPosition, isJump, jumpDistance) {
+            if (!this._logEnabled) return;
+
+            const changeData = {
+                raw: {
+                    lat: rawPosition.latitude,
+                    lng: rawPosition.longitude,
+                    accuracy: rawPosition.accuracy
+                },
+                filtered: {
+                    lat: filteredPosition.latitude,
+                    lng: filteredPosition.longitude,
+                    accuracy: filteredPosition.accuracy
+                },
+                isJump: isJump || false,
+                jumpDistance: jumpDistance || 0
+            };
+
+            // Önceki konumla karşılaştır
+            if (this._lastLoggedPosition) {
+                const distance = L.latLng(
+                    this._lastLoggedPosition.filtered.lat,
+                    this._lastLoggedPosition.filtered.lng
+                ).distanceTo(L.latLng(
+                    filteredPosition.latitude,
+                    filteredPosition.longitude
+                ));
+
+                changeData.distanceFromLast = distance;
+
+                // Büyük değişim tespiti (10m'den fazla)
+                if (distance > 10) {
+                    this._addLog('large_change', {
+                        ...changeData,
+                        changeType: 'large',
+                        threshold: 10
+                    });
+                }
+            }
+
+            // Sıçrama varsa özel log
+            if (isJump && jumpDistance > 0) {
+                this._addLog('jump', {
+                    ...changeData,
+                    jumpType: jumpDistance > 20 ? 'major' : 'minor'
+                });
+            }
+
+            // Normal konum logu
+            this._addLog('position', changeData);
+
+            // Son konumu kaydet
+            this._lastLoggedPosition = {
+                raw: changeData.raw,
+                filtered: changeData.filtered,
+                timestamp: Date.now()
+            };
         }
     });
 
