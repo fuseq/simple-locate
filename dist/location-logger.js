@@ -293,28 +293,42 @@ class LocationLogger {
         if (totalLogsEl) totalLogsEl.textContent = this.logs.length;
         if (jumpCountEl) jumpCountEl.textContent = jumpCount;
         
-        this.updateLogList();
+        // Sadece bottom sheet açıksa log listesini güncelle
+        if (this.bottomSheet && this.bottomSheet.classList.contains('active')) {
+            this.updateLogList();
+        }
     }
 
     
     updateLogList() {
-        this.logContainer = document.getElementById('logContainer');
-        if (!this.logContainer) {
+        // Container'ı her seferinde DOM'dan al (güncellemeyi garantilemek için)
+        const logContainer = document.getElementById('logContainer');
+        if (!logContainer) {
             console.warn('Location Logger: logContainer bulunamadı, bottom sheet henüz oluşturulmamış olabilir');
             return;
         }
+        
+        // Referansı güncelle
+        this.logContainer = logContainer;
 
         if (this.logs.length === 0) {
             this.logContainer.innerHTML = '<div class="location-logger-empty">Henüz log kaydı yok</div>';
             return;
         }
 
-        const logHTML = this.logs.map(log => this.createLogItemHTML(log)).join('');
+        // Logları ters sırada göster (en yeni üstte)
+        const logHTML = this.logs
+            .slice()
+            .reverse()
+            .map(log => this.createLogItemHTML(log))
+            .join('');
+        
         this.logContainer.innerHTML = logHTML;
 
+        // En üste scroll et (çünkü en yeni loglar üstte)
         setTimeout(() => {
             if (this.logContainer) {
-                this.logContainer.scrollTop = this.logContainer.scrollHeight;
+                this.logContainer.scrollTop = 0;
             }
         }, 0);
     }
@@ -401,15 +415,13 @@ class LocationLogger {
         this.bottomSheet.classList.add('active');
         document.body.style.overflow = 'hidden';
         
+        // Container'ı her açıldığında yeniden al
         this.logContainer = document.getElementById('logContainer');
         
-        if (this.logs.length > 0) {
-            setTimeout(() => {
-                this.updateLogList();
-            }, 50);
-        } else {
+        // Her zaman güncel log listesini göster
+        setTimeout(() => {
             this.updateLogList();
-        }
+        }, 50);
     }
 
     
