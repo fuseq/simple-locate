@@ -208,12 +208,6 @@
 
             // Filtreleme hata ayıklama için görsel öğeler
             this._rawPositionMarker = undefined;
-
-            // Loglama sistemi
-            this._logEnabled = false;
-            this._logs = [];
-            this._maxLogs = 1000; // Maksimum log sayısı
-            this._lastLoggedPosition = null;
         },
 
         // Median Filtreyi uygula
@@ -571,9 +565,6 @@
                 isFiltered: true,
                 isJump: isJump
             };
-
-            // Loglama: Konum değişikliğini logla
-            this._logPositionChange(position, kalmanFiltered, isJump, jumpDistance);
 
             // Filtreleme görsellerini güncelle (opsiyonel)
             if (this.options.showFilterDebug) {
@@ -1292,108 +1283,6 @@
 
             // 5 metreden az hareket olduysa, durağan kabul et
             return distance < 5;
-        },
-
-        // Loglama fonksiyonları
-        setLoggingEnabled: function (enabled) {
-            this._logEnabled = enabled;
-            return this;
-        },
-
-        getLogs: function () {
-            return this._logs.slice(); // Kopya döndür
-        },
-
-        clearLogs: function () {
-            this._logs = [];
-            this._lastLoggedPosition = null;
-            return this;
-        },
-
-        // Log ekle
-        _addLog: function (type, data) {
-            if (!this._logEnabled) return;
-
-            const logEntry = {
-                timestamp: Date.now(),
-                time: new Date().toLocaleTimeString('tr-TR'),
-                type: type, // 'position', 'jump', 'large_change', 'filter_applied'
-                data: data
-            };
-
-            this._logs.push(logEntry);
-
-            // Maksimum log sayısını aşarsa en eskisini kaldır
-            if (this._logs.length > this._maxLogs) {
-                this._logs.shift();
-            }
-
-            // Log event'i tetikle (UI güncellemesi için)
-            if (typeof window !== 'undefined' && window.dispatchEvent) {
-                window.dispatchEvent(new CustomEvent('locationLogUpdated', {
-                    detail: logEntry
-                }));
-            }
-        },
-
-        // Konum değişikliğini logla
-        _logPositionChange: function (rawPosition, filteredPosition, isJump, jumpDistance) {
-            if (!this._logEnabled) return;
-
-            const changeData = {
-                raw: {
-                    lat: rawPosition.latitude,
-                    lng: rawPosition.longitude,
-                    accuracy: rawPosition.accuracy
-                },
-                filtered: {
-                    lat: filteredPosition.latitude,
-                    lng: filteredPosition.longitude,
-                    accuracy: filteredPosition.accuracy
-                },
-                isJump: isJump || false,
-                jumpDistance: jumpDistance || 0
-            };
-
-            // Önceki konumla karşılaştır
-            if (this._lastLoggedPosition) {
-                const distance = L.latLng(
-                    this._lastLoggedPosition.filtered.lat,
-                    this._lastLoggedPosition.filtered.lng
-                ).distanceTo(L.latLng(
-                    filteredPosition.latitude,
-                    filteredPosition.longitude
-                ));
-
-                changeData.distanceFromLast = distance;
-
-                // Büyük değişim tespiti (10m'den fazla)
-                if (distance > 10) {
-                    this._addLog('large_change', {
-                        ...changeData,
-                        changeType: 'large',
-                        threshold: 10
-                    });
-                }
-            }
-
-            // Sıçrama varsa özel log
-            if (isJump && jumpDistance > 0) {
-                this._addLog('jump', {
-                    ...changeData,
-                    jumpType: jumpDistance > 20 ? 'major' : 'minor'
-                });
-            }
-
-            // Normal konum logu
-            this._addLog('position', changeData);
-
-            // Son konumu kaydet
-            this._lastLoggedPosition = {
-                raw: changeData.raw,
-                filtered: changeData.filtered,
-                timestamp: Date.now()
-            };
         }
     });
 
