@@ -82,6 +82,9 @@ class LocationLogger {
                 <div class="location-logger-header">
                     <h3>Konum Logları</h3>
                     <div class="location-logger-header-actions">
+                        <button id="toggleLoggingBtn" class="location-logger-action-btn" title="Loglamayı Durdur/Başlat">
+                            <i class="material-icons" id="toggleLoggingIcon">pause</i>
+                        </button>
                         <button id="clearLogsBtn" class="location-logger-action-btn" title="Logları Temizle">
                             <i class="material-icons">delete_sweep</i>
                         </button>
@@ -154,6 +157,12 @@ class LocationLogger {
             this.closeBottomSheet();
         });
 
+        // Loglamayı durdur/başlat butonu
+        const toggleLoggingBtn = document.getElementById('toggleLoggingBtn');
+        toggleLoggingBtn.addEventListener('click', () => {
+            this.toggleLogging();
+        });
+
         // Temizle butonu
         const clearBtn = document.getElementById('clearLogsBtn');
         clearBtn.addEventListener('click', () => {
@@ -173,6 +182,7 @@ class LocationLogger {
     startLogging() {
         this.isLogging = true;
         this.updateLoggingStatus(true);
+        this.updateToggleButton();
     }
 
     /**
@@ -181,6 +191,35 @@ class LocationLogger {
     stopLogging() {
         this.isLogging = false;
         this.updateLoggingStatus(false);
+        this.updateToggleButton();
+    }
+
+    /**
+     * Loglamayı durdur/başlat (toggle)
+     */
+    toggleLogging() {
+        if (this.isLogging) {
+            this.stopLogging();
+        } else {
+            this.startLogging();
+        }
+    }
+
+    /**
+     * Toggle butonunun ikonunu güncelle
+     */
+    updateToggleButton() {
+        const toggleIcon = document.getElementById('toggleLoggingIcon');
+        const toggleBtn = document.getElementById('toggleLoggingBtn');
+        if (toggleIcon && toggleBtn) {
+            if (this.isLogging) {
+                toggleIcon.textContent = 'pause';
+                toggleBtn.title = 'Loglamayı Durdur';
+            } else {
+                toggleIcon.textContent = 'play_arrow';
+                toggleBtn.title = 'Loglamayı Başlat';
+            }
+        }
     }
 
     /**
@@ -232,12 +271,12 @@ class LocationLogger {
             }
         }
 
-        // Log ekle
-        this.logs.unshift(logEntry); // En yeni en üstte
+        // Log ekle - En yeni en altta (chronological order)
+        this.logs.push(logEntry);
 
         // Maksimum log sayısını kontrol et
         if (this.logs.length > this.maxLogs) {
-            this.logs = this.logs.slice(0, this.maxLogs);
+            this.logs = this.logs.slice(-this.maxLogs); // En eski logları sil
         }
 
         // Son konumu güncelle
@@ -279,18 +318,24 @@ class LocationLogger {
      */
     updateUI() {
         // Badge güncelle
-        this.logCountBadge.textContent = this.logs.length;
-        if (this.logs.length > 0) {
-            this.logCountBadge.style.display = 'flex';
+        if (this.logCountBadge) {
+            this.logCountBadge.textContent = this.logs.length;
+            if (this.logs.length > 0) {
+                this.logCountBadge.style.display = 'flex';
+            }
         }
 
         // İstatistikleri güncelle
         const jumpCount = this.logs.filter(log => log.type === 'jump').length;
         const deviationCount = this.logs.filter(log => log.type === 'deviation').length;
         
-        document.getElementById('totalLogsCount').textContent = this.logs.length;
-        document.getElementById('jumpCount').textContent = jumpCount;
-        document.getElementById('deviationCount').textContent = deviationCount;
+        const totalLogsEl = document.getElementById('totalLogsCount');
+        const jumpCountEl = document.getElementById('jumpCount');
+        const deviationCountEl = document.getElementById('deviationCount');
+        
+        if (totalLogsEl) totalLogsEl.textContent = this.logs.length;
+        if (jumpCountEl) jumpCountEl.textContent = jumpCount;
+        if (deviationCountEl) deviationCountEl.textContent = deviationCount;
 
         // Log listesini güncelle
         this.updateLogList();
@@ -308,8 +353,8 @@ class LocationLogger {
         const logHTML = this.logs.map(log => this.createLogItemHTML(log)).join('');
         this.logContainer.innerHTML = logHTML;
 
-        // Scroll'u en üste al
-        this.logContainer.scrollTop = 0;
+        // Scroll'u en alta al (en son eklenen logu göster)
+        this.logContainer.scrollTop = this.logContainer.scrollHeight;
     }
 
     /**
@@ -422,6 +467,10 @@ class LocationLogger {
             this.logs = [];
             this.lastPosition = null;
             this.updateUI();
+            // Scroll'u sıfırla
+            if (this.logContainer) {
+                this.logContainer.scrollTop = 0;
+            }
         }
     }
 
