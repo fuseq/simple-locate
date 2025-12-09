@@ -232,9 +232,8 @@ let locationLogger = null;
 function initLocationLogger() {
     if (typeof LocationLogger !== 'undefined') {
         locationLogger = new LocationLogger({
-            maxLogs: 1000,
-            jumpThreshold: 10, // 10 metre sıçrama eşiği
-            deviationThreshold: 5 // 5 metre sapma eşiği
+            maxLogs: 10000,
+            jumpThreshold: 10
         });
         console.log('Location Logger başlatıldı');
     } else {

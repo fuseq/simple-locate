@@ -7,8 +7,7 @@ class LocationLogger {
         this.maxLogs = options.maxLogs || 10000; // Maksimum log sayısı
         this.isLogging = false;
         this.lastPosition = null;
-        this.jumpThreshold = options.jumpThreshold || 10; // Metre cinsinden sıçrama eşiği
-        this.deviationThreshold = options.deviationThreshold || 5; // Metre cinsinden sapma eşiği
+        this.jumpThreshold = options.jumpThreshold || 10;
         
         // UI elementleri
         this.logButton = null;
@@ -98,10 +97,6 @@ class LocationLogger {
                     <div class="stat-item">
                         <span class="stat-label">Sıçrama:</span>
                         <span class="stat-value stat-jump" id="jumpCount">0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Sapma:</span>
-                        <span class="stat-value stat-deviation" id="deviationCount">0</span>
                     </div>
                     <div class="stat-item">
                         <span class="stat-label">Durum:</span>
@@ -222,7 +217,6 @@ class LocationLogger {
             isJump: locationData.isJump || false,
             isFiltered: locationData.isFiltered || false,
             distance: null,
-            deviation: null,
             type: 'normal' 
         };
 
@@ -240,14 +234,6 @@ class LocationLogger {
             if (distance > this.jumpThreshold) {
                 logEntry.type = 'jump';
                 logEntry.isJump = true;
-            }
-
-           
-            if (logEntry.accuracy && distance > Math.max(this.deviationThreshold, logEntry.accuracy * 0.5)) {
-                if (logEntry.type === 'normal') {
-                    logEntry.type = 'deviation';
-                }
-                logEntry.deviation = distance;
             }
         }
 
@@ -300,22 +286,30 @@ class LocationLogger {
 
      
         const jumpCount = this.logs.filter(log => log.type === 'jump').length;
-        const deviationCount = this.logs.filter(log => log.type === 'deviation').length;
         
         const totalLogsEl = document.getElementById('totalLogsCount');
         const jumpCountEl = document.getElementById('jumpCount');
-        const deviationCountEl = document.getElementById('deviationCount');
         
         if (totalLogsEl) totalLogsEl.textContent = this.logs.length;
         if (jumpCountEl) jumpCountEl.textContent = jumpCount;
-        if (deviationCountEl) deviationCountEl.textContent = deviationCount;
 
+        if (!this.logContainer) {
+            this.logContainer = document.getElementById('logContainer');
+        }
         
         this.updateLogList();
     }
 
     
     updateLogList() {
+        if (!this.logContainer) {
+            this.logContainer = document.getElementById('logContainer');
+            if (!this.logContainer) {
+                console.warn('Location Logger: logContainer bulunamadı');
+                return;
+            }
+        }
+
         if (this.logs.length === 0) {
             this.logContainer.innerHTML = '<div class="location-logger-empty">Henüz log kaydı yok</div>';
             return;
@@ -324,8 +318,11 @@ class LocationLogger {
         const logHTML = this.logs.map(log => this.createLogItemHTML(log)).join('');
         this.logContainer.innerHTML = logHTML;
 
-        
-        this.logContainer.scrollTop = this.logContainer.scrollHeight;
+        setTimeout(() => {
+            if (this.logContainer) {
+                this.logContainer.scrollTop = this.logContainer.scrollHeight;
+            }
+        }, 0);
     }
 
     createLogItemHTML(log) {
@@ -340,10 +337,6 @@ class LocationLogger {
             typeClass = 'log-item-jump';
             typeIcon = '⚠️';
             typeLabel = 'Sıçrama';
-        } else if (log.type === 'deviation') {
-            typeClass = 'log-item-deviation';
-            typeIcon = '📊';
-            typeLabel = 'Sapma';
         } else {
             typeClass = 'log-item-normal';
             typeIcon = '📍';
@@ -413,6 +406,16 @@ class LocationLogger {
     openBottomSheet() {
         this.bottomSheet.classList.add('active');
         document.body.style.overflow = 'hidden';
+        
+        if (!this.logContainer) {
+            this.logContainer = document.getElementById('logContainer');
+        }
+        
+        if (this.logs.length > 0) {
+            setTimeout(() => {
+                this.updateLogList();
+            }, 100);
+        }
     }
 
     
@@ -426,8 +429,13 @@ class LocationLogger {
         if (confirm('Tüm logları temizlemek istediğinize emin misiniz?')) {
             this.logs = [];
             this.lastPosition = null;
+            
+            if (!this.logContainer) {
+                this.logContainer = document.getElementById('logContainer');
+            }
+            
             this.updateUI();
-           
+            
             if (this.logContainer) {
                 this.logContainer.scrollTop = 0;
             }
