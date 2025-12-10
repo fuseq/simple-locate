@@ -360,6 +360,7 @@
                         latitude: this._weiYeState.lastFilteredPosition.latitude,
                         longitude: this._weiYeState.lastFilteredPosition.longitude,
                         accuracy: this._weiYeState.lastFilteredPosition.accuracy,
+                        altitude: this._weiYeState.lastFilteredPosition.altitude,
                         timestamp: position.timestamp
                     };
                 }
@@ -480,6 +481,7 @@
                             latitude: blendFactor * position.latitude + (1 - blendFactor) * filteredLat,
                             longitude: blendFactor * position.longitude + (1 - blendFactor) * filteredLng,
                             accuracy: position.accuracy,
+                            altitude: position.altitude,
                             timestamp: position.timestamp,
                             lpfApplied: true
                         };
@@ -492,6 +494,7 @@
                             latitude: filteredLat,
                             longitude: filteredLng,
                             accuracy: position.accuracy,
+                            altitude: position.altitude,
                             timestamp: position.timestamp,
                             lpfApplied: true
                         };
@@ -677,6 +680,9 @@
             } else {
                 kalmanFiltered.altitude = position.altitude;
             }
+            
+            // lastFilteredPosition'a da altitude ekle
+            this._weiYeState.lastFilteredPosition.altitude = kalmanFiltered.altitude;
 
             return kalmanFiltered;
         },
@@ -981,8 +987,18 @@
         },
 
         _onLocationFound: function (event) {
+            // Leaflet event formatını normalize et (event.latlng varsa, Geolocation API formatına çevir)
+            const position = event.latlng ? {
+                latitude: event.latlng.lat,
+                longitude: event.latlng.lng,
+                accuracy: event.accuracy,
+                altitude: event.altitude, // Leaflet event'inde altitude doğrudan var
+                altitudeAccuracy: event.altitudeAccuracy,
+                timestamp: event.timestamp || Date.now()
+            } : event; // Geolocation API coords formatında ise olduğu gibi kullan
+            
             // Wei Ye algoritması ile konumu filtrele
-            const filteredPosition = this._applyWeiYeFilter(event);
+            const filteredPosition = this._applyWeiYeFilter(position);
 
             // Önceki filtrelenmiş konumla aynıysa güncelleme yapma (micro değişiklikleri engelle)
             if (this._latitude && filteredPosition.latitude &&
