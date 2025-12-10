@@ -169,10 +169,15 @@ function createWeiYeInfoControl() {
             if (!accuracyEl || !filteredEl || !altitudeEl) return;
 
             accuracyEl.textContent = Math.round(stats.accuracy);
-            altitudeEl.textContent =
-                stats.altitude !== undefined && stats.altitude !== null
-                    ? stats.altitude.toFixed(1)
-                    : "--";
+            
+            // Altitude değerini ve referansını göster
+            if (stats.altitude !== undefined && stats.altitude !== null && !isNaN(stats.altitude)) {
+                const refText = stats.altitudeReference === 'msl' ? ' (MSL)' : 
+                               stats.altitudeReference === 'wgs84' ? ' (WGS84)' : '';
+                altitudeEl.textContent = stats.altitude.toFixed(1) + refText;
+            } else {
+                altitudeEl.textContent = "--";
+            }
 
             if (stats.accuracy <= 5) {
                 accuracyEl.className = "accuracy-value accuracy-good";
@@ -278,64 +283,39 @@ const control = new L.Control.SimpleLocate({
     enableLowPassFilter: true,
 
     afterDeviceMove: (location) => {
+        // Artık filtrelenmiş ve seçilen referansa göre dönüştürülmüş altitude
+        // location objesinden direkt alınıyor
+        const altitude = location.altitude !== undefined && location.altitude !== null 
+            ? location.altitude 
+            : NaN;
 
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                const altitude =
-                    pos.coords.altitude !== null ? pos.coords.altitude : NaN;
+        const lat = location.lat;
+        const lng = location.lng;
 
-                const lat = location.lat;
-                const lng = location.lng;
+        weiYeInfoControl.updateStats({
+            accuracy: location.accuracy,
+            altitude: altitude,
+            altitudeReference: location.altitudeReference, // Hangi referans kullanıldı
+            isJump: location.isJump,
+            initializing:
+                control._weiYeState?.filteringStats.totalUpdates < 3,
+        });
 
-                weiYeInfoControl.updateStats({
-                    accuracy: location.accuracy,
-                    altitude: altitude,
-                    isJump: location.isJump,
-                    initializing:
-                        control._weiYeState?.filteringStats.totalUpdates < 3,
-                });
+        // Location Logger'a log ekle
+        if (locationLogger) {
+            locationLogger.logLocation({
+                lat: lat,
+                lng: lng,
+                accuracy: location.accuracy,
+                altitude: altitude,
+                angle: location.angle,
+                isJump: location.isJump,
+                isFiltered: location.isFiltered
+            });
+        }
 
-                // Location Logger'a log ekle
-                if (locationLogger) {
-                    locationLogger.logLocation({
-                        lat: lat,
-                        lng: lng,
-                        accuracy: location.accuracy,
-                        altitude: altitude,
-                        angle: location.angle,
-                        isJump: location.isJump,
-                        isFiltered: location.isFiltered
-                    });
-                }
-
-                onUserLocationUpdate(lat, lng, altitude);
-            },
-            () => {
-                weiYeInfoControl.updateStats({
-                    accuracy: location.accuracy,
-                    altitude: NaN,
-                    isJump: location.isJump,
-                    initializing:
-                        control._weiYeState?.filteringStats.totalUpdates < 3,
-                });
-                
-                // Location Logger'a log ekle (altitude olmadan)
-                if (locationLogger) {
-                    locationLogger.logLocation({
-                        lat: location.lat,
-                        lng: location.lng,
-                        accuracy: location.accuracy,
-                        altitude: NaN,
-                        angle: location.angle,
-                        isJump: location.isJump,
-                        isFiltered: location.isFiltered
-                    });
-                }
-                
-                // Altitude alınamazsa da konumu güncelle (altitude NaN)
-                onUserLocationUpdate(location.lat, location.lng, NaN);
-            }
-        );
+        // Konum güncellemesi
+        onUserLocationUpdate(lat, lng, altitude);
     },
 
     afterClick: (status) => {

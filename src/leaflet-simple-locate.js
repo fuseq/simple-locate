@@ -167,6 +167,8 @@
             this._latitude = undefined;
             this._longitude = undefined;
             this._accuracy = undefined;
+            this._altitude = undefined; // Filtrelenmiş ve dönüştürülmüş altitude
+            this._rawAltitude = undefined; // Ham altitude (referans dönüşümü için)
             this._angle = undefined;
 
             this._lowPassFilterLat = null;
@@ -1166,6 +1168,12 @@
             this._latitude = filteredPosition.latitude;
             this._longitude = filteredPosition.longitude;
             this._accuracy = filteredPosition.accuracy;
+            this._altitude = filteredPosition.altitude; // Filtrelenmiş ve dönüştürülmüş altitude
+            
+            // Ham altitude'u sakla (referans değiştiğinde yeniden dönüştürmek için)
+            if (event.altitude !== undefined && event.altitude !== null) {
+                this._rawAltitude = event.altitude;
+            }
 
             // Marker'ı güncelle
             this._updateMarker();
@@ -1242,12 +1250,22 @@
         },
 
         _updateMarker: function () {
+            // Altitude'u mevcut referansa göre yeniden hesapla
+            // (Kullanıcı altitudeReference'ı değiştirdiğinde bu fonksiyon çağrılır)
+            let currentAltitude = this._altitude;
+            if (this._rawAltitude !== undefined && this._rawAltitude !== null) {
+                // Ham altitude'dan yeniden filtrele ve dönüştür
+                currentAltitude = this._filterAltitude(this._rawAltitude);
+            }
+            
             if (this.options.afterDeviceMove) {
                 // Callback fonksiyonunu çağır, filtrelenmiş konumu ve filtreleme istatistiklerini kullan
                 this.options.afterDeviceMove({
                     lat: this._latitude,
                     lng: this._longitude,
                     accuracy: this._accuracy,
+                    altitude: currentAltitude, // Filtrelenmiş ve seçilen referansa göre dönüştürülmüş
+                    altitudeReference: this.options.altitudeReference, // Hangi referans kullanıldı
                     angle: this._angle,
                     isFiltered: true,
                     isJump: this._weiYeState.isJumpDetected,
