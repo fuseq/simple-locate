@@ -7,9 +7,35 @@ const map = new L.Map("map", {
     zoomControl: false,
 });
 
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "&copy; OpenStreetMap contributors",
-}).addTo(map);
+// Google Maps Layers
+const googleStreets = L.gridLayer.googleMutant({
+    type: 'roadmap', // Yol haritası
+});
+
+const googleSatellite = L.gridLayer.googleMutant({
+    type: 'satellite', // Uydu görünümü
+});
+
+const googleHybrid = L.gridLayer.googleMutant({
+    type: 'hybrid', // Uydu + Yollar
+});
+
+const googleTerrain = L.gridLayer.googleMutant({
+    type: 'terrain', // Arazi haritası
+});
+
+// Varsayılan olarak Streets göster
+googleStreets.addTo(map);
+
+// Layer kontrolü ekle (sağ üstte harita türü seçici)
+const baseMaps = {
+    "Google Streets": googleStreets,
+    "Google Satellite": googleSatellite,
+    "Google Hybrid": googleHybrid,
+    "Google Terrain": googleTerrain,
+};
+
+L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
 
 // 2. Kat bilgileri ve SVG kapı çizgileri değişkenleri
 let floorAltitudes = {};
@@ -170,11 +196,9 @@ function createWeiYeInfoControl() {
 
             accuracyEl.textContent = Math.round(stats.accuracy);
             
-            // Altitude değerini ve referansını göster
+            // Altitude değerini göster
             if (stats.altitude !== undefined && stats.altitude !== null && !isNaN(stats.altitude)) {
-                const refText = stats.altitudeReference === 'msl' ? ' (MSL)' : 
-                               stats.altitudeReference === 'wgs84' ? ' (WGS84)' : '';
-                altitudeEl.textContent = stats.altitude.toFixed(1) + refText;
+                altitudeEl.textContent = stats.altitude.toFixed(1);
             } else {
                 altitudeEl.textContent = "--";
             }
@@ -295,7 +319,6 @@ const control = new L.Control.SimpleLocate({
         weiYeInfoControl.updateStats({
             accuracy: location.accuracy,
             altitude: altitude,
-            altitudeReference: location.altitudeReference, // Hangi referans kullanıldı
             isJump: location.isJump,
             initializing:
                 control._weiYeState?.filteringStats.totalUpdates < 3,

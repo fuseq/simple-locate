@@ -55,13 +55,6 @@
             showJumpWarnings: true,       // Sıçrama uyarılarını göster
             lowPassFilterTau: 1.0,        // Filtre zaman sabiti (saniye)
             enableLowPassFilter: true,    // Low Pass Filtreyi etkinleştir/devre dışı bırak
-            
-            // Altitude referans sistemi
-            altitudeReference: 'native',  // 'native', 'msl', 'wgs84'
-            // 'native': Her platform kendi referansını kullanır (varsayılan)
-            // 'msl': Deniz seviyesi (Orthometric Height H)
-            // 'wgs84': GPS Ellipsoidal Height (h)
-            geoidUndulation: null,        // Geoid yüksekliği (N), null ise otomatik hesaplanır
 
             afterClick: null,
             afterMarkerAdd: null,
@@ -167,8 +160,7 @@
             this._latitude = undefined;
             this._longitude = undefined;
             this._accuracy = undefined;
-            this._altitude = undefined; // Filtrelenmiş ve dönüştürülmüş altitude
-            this._rawAltitude = undefined; // Ham altitude (referans dönüşümü için)
+            this._altitude = undefined;
             this._angle = undefined;
 
             this._lowPassFilterLat = null;
@@ -181,16 +173,6 @@
             // Altitude filtreleme için geçmiş
             this._altitudeHistory = [];
             this._maxAltitudeHistory = 5; // Son 5 ölçümü tut
-            
-            // Geoid Undulation (N) - Ellipsoidal ve Orthometric yükseklik farkı
-            // h = H + N formülü ile hesaplanır
-            // Bu değer bölgeye göre değişir ve otomatik kalibre edilir
-            this._geoidUndulation = null; // Otomatik hesaplanacak
-            this._altitudeCalibrationData = {
-                samples: [],
-                maxSamples: 20,
-                isCalibrated: false
-            };
 
             // Median Filtre için özellikleri ekle
             this._medianFilter = {
@@ -350,66 +332,7 @@
             };
         },
         
-        // Geoid Undulation (N) değerini hesapla veya kullan
-        // Formül: h = H + N
-        // h: Ellipsoidal Height (WGS84 - Android)
-        // H: Orthometric Height (MSL - iOS)
-        // N: Geoid Undulation (Bölgesel fark)
-        _getGeoidUndulation: function () {
-            // Manuel olarak ayarlandıysa, onu kullan
-            if (this.options.geoidUndulation !== null) {
-                return this.options.geoidUndulation;
-            }
-            
-            // Daha önce kalibre edildiyse, onu kullan
-            if (this._geoidUndulation !== null) {
-                return this._geoidUndulation;
-            }
-            
-            // Otomatik kalibrasyon: İlk 20 ölçümün stabilitesinden hesapla
-            const calib = this._altitudeCalibrationData;
-            
-            if (!calib.isCalibrated && this._altitudeHistory.length >= 5) {
-                // Altitudelar stabil mi kontrol et (standart sapma < 5m)
-                const mean = this._altitudeHistory.reduce((a, b) => a + b, 0) / this._altitudeHistory.length;
-                const variance = this._altitudeHistory.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / this._altitudeHistory.length;
-                const stdDev = Math.sqrt(variance);
-                
-                if (stdDev < 5) {
-                    // Stabil, bu değeri referans al
-                    calib.samples.push(mean);
-                    
-                    if (calib.samples.length >= calib.maxSamples) {
-                        // Yeterli veri toplandı, kalibrasyon tamamlandı
-                        const calibMean = calib.samples.reduce((a, b) => a + b, 0) / calib.samples.length;
-                        
-                        // Platform bazında tipik değerlere göre N'yi hesapla
-                        if (this._isIOS) {
-                            // iOS genelde MSL (H) veriyor, WGS84'e (h) çevirmek için +N
-                            // Tipik iOS değeri: 40m, Beklenen WGS84: ~70m → N ≈ 30m
-                            // Ama gerçek değer: calibMean
-                            // Eğer calibMean < 50 ise, muhtemelen MSL, N = 30-35
-                            this._geoidUndulation = calibMean < 50 ? 32 : 0;
-                        } else {
-                            // Android genelde WGS84 (h) veriyor, MSL'e (H) çevirmek için -N
-                            // Tipik Android değeri: 73m, Beklenen MSL: ~40m → N ≈ 33m
-                            this._geoidUndulation = calibMean > 60 ? 32 : 0;
-                        }
-                        
-                        calib.isCalibrated = true;
-                        
-                        if (this.options.showFilterInfo) {
-                            console.log(`Altitude kalibrasyon tamamlandı: N = ${this._geoidUndulation}m (Platform: ${this._isIOS ? 'iOS' : 'Android'})`);
-                        }
-                    }
-                }
-            }
-            
-            return this._geoidUndulation || 0;
-        },
-        
-        // Altitude filtreleme + Geodezik dönüşüm
-        // Formül: h = H + N (Ellipsoidal = Orthometric + Geoid Undulation)
+        // Altitude filtreleme - Sadece gürültüyü temizle
         _filterAltitude: function (rawAltitude) {
             // Altitude değeri yoksa, direkt dön
             if (typeof rawAltitude !== 'number' || !isFinite(rawAltitude)) {
@@ -429,7 +352,7 @@
                 return rawAltitude;
             }
             
-            // 1. Önce gürültüyü temizle (Platform bağımsız)
+            // Basit medyan filtre (Platform bağımsız)
             const sorted = [...this._altitudeHistory].sort((a, b) => a - b);
             const median = sorted[Math.floor(sorted.length / 2)];
             
@@ -438,72 +361,16 @@
             const variance = this._altitudeHistory.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / this._altitudeHistory.length;
             const stdDev = Math.sqrt(variance);
             
-            // iOS için daha agresif filtreleme (gürültü çok fazla)
-            // Android için daha toleranslı (zaten stabil)
-            const outlierThreshold = this._isIOS ? 2 * stdDev : 3 * stdDev; // iOS: 2σ, Android: 3σ
-            
-            // Ham değer aykırı değer mi kontrol et
+            // Aykırı değer tespiti (2.5σ eşik)
+            const outlierThreshold = 2.5 * stdDev;
             const isOutlier = Math.abs(rawAltitude - median) > Math.max(outlierThreshold, 10); // En az 10m
             
-            let filteredAltitude;
-            
-            if (isOutlier) {
-                if (this.options.showFilterInfo) {
-                    console.log(`${this._isIOS ? 'iOS' : 'Android'}: Altitude aykırı değer (${rawAltitude.toFixed(1)}m → ${median.toFixed(1)}m, std: ${stdDev.toFixed(1)}m)`);
-                }
-                filteredAltitude = median;
-            } else {
-                // Aykırı değer değilse, platform bazlı filtreleme
-                if (this._isIOS) {
-                    // iOS: Medyan kullan (daha stabil)
-                    filteredAltitude = median;
-                } else {
-                    // Android: Hareketli ortalama kullan (zaten stabil)
-                    filteredAltitude = mean;
-                }
+            if (isOutlier && this.options.showFilterInfo) {
+                console.log(`Altitude aykırı değer: ${rawAltitude.toFixed(1)}m → ${median.toFixed(1)}m (std: ${stdDev.toFixed(1)}m)`);
             }
             
-            // 2. Geodezik dönüşüm uygula (İsteğe bağlı)
-            // h = H + N formülü
-            const altRef = this.options.altitudeReference;
-            
-            if (altRef === 'native') {
-                // Her platform kendi referansını kullansın
-                return filteredAltitude;
-            }
-            
-            // Geoid undulation değerini al
-            const N = this._getGeoidUndulation();
-            
-            if (altRef === 'msl') {
-                // MSL (Deniz seviyesi) isteniyor
-                if (this._isIOS) {
-                    // iOS zaten MSL veriyor
-                    return filteredAltitude;
-                } else {
-                    // Android WGS84 veriyor, MSL'e çevir: H = h - N
-                    const converted = filteredAltitude - N;
-                    if (this.options.showFilterInfo) {
-                        console.log(`Android → MSL: ${filteredAltitude.toFixed(1)}m - ${N.toFixed(1)}m = ${converted.toFixed(1)}m`);
-                    }
-                    return converted;
-                }
-            } else if (altRef === 'wgs84') {
-                // WGS84 Ellipsoidal isteniyor
-                if (this._isIOS) {
-                    // iOS MSL veriyor, WGS84'e çevir: h = H + N
-                    const converted = filteredAltitude + N;
-                    if (this.options.showFilterInfo) {
-                        console.log(`iOS → WGS84: ${filteredAltitude.toFixed(1)}m + ${N.toFixed(1)}m = ${converted.toFixed(1)}m`);
-                    }
-                    return converted;
-                } else {
-                    // Android zaten WGS84 veriyor
-                    return filteredAltitude;
-                }
-            }
-            
-            return filteredAltitude;
+            // Aykırı değerse medyan, değilse medyan kullan (tutarlılık için)
+            return median;
         },
 
         // Kalman Filtreyi uygula
@@ -1168,12 +1035,7 @@
             this._latitude = filteredPosition.latitude;
             this._longitude = filteredPosition.longitude;
             this._accuracy = filteredPosition.accuracy;
-            this._altitude = filteredPosition.altitude; // Filtrelenmiş ve dönüştürülmüş altitude
-            
-            // Ham altitude'u sakla (referans değiştiğinde yeniden dönüştürmek için)
-            if (event.altitude !== undefined && event.altitude !== null) {
-                this._rawAltitude = event.altitude;
-            }
+            this._altitude = filteredPosition.altitude; // Filtrelenmiş altitude
 
             // Marker'ı güncelle
             this._updateMarker();
@@ -1250,22 +1112,13 @@
         },
 
         _updateMarker: function () {
-            // Altitude'u mevcut referansa göre yeniden hesapla
-            // (Kullanıcı altitudeReference'ı değiştirdiğinde bu fonksiyon çağrılır)
-            let currentAltitude = this._altitude;
-            if (this._rawAltitude !== undefined && this._rawAltitude !== null) {
-                // Ham altitude'dan yeniden filtrele ve dönüştür
-                currentAltitude = this._filterAltitude(this._rawAltitude);
-            }
-            
             if (this.options.afterDeviceMove) {
                 // Callback fonksiyonunu çağır, filtrelenmiş konumu ve filtreleme istatistiklerini kullan
                 this.options.afterDeviceMove({
                     lat: this._latitude,
                     lng: this._longitude,
                     accuracy: this._accuracy,
-                    altitude: currentAltitude, // Filtrelenmiş ve seçilen referansa göre dönüştürülmüş
-                    altitudeReference: this.options.altitudeReference, // Hangi referans kullanıldı
+                    altitude: this._altitude, // Filtrelenmiş altitude
                     angle: this._angle,
                     isFiltered: true,
                     isJump: this._weiYeState.isJumpDetected,

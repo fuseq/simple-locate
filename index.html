@@ -13,6 +13,13 @@
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       crossorigin=""
     ></script>
+
+    <!-- Google Maps API -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCmurfWEw-GKHOy1AiGvl61BovbpKdWAso"></script>
+
+    <!-- Leaflet.GridLayer.GoogleMutant Plugin -->
+    <script src="https://unpkg.com/leaflet.gridlayer.googlemutant@latest/dist/Leaflet.GoogleMutant.js"></script>
+
     <script src="dist/leaflet-simple-locate.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/low-pass-filter@1.0.0/dist/low-pass-filter.min.js"></script>
 
@@ -462,23 +469,6 @@
           <span class="range-value">0.5</span>
         </div>
 
-        <div class="filter-group">
-          <label for="altitudeReference"
-            >Altitude Referansı
-            <span
-              class="info-icon"
-              data-title="Altitude Referans Sistemi"
-              data-info="Yükseklik referans sistemi. 'Native': Her platform kendi sistemini kullanır (iOS: Deniz seviyesi ~40m, Android: GPS Ellipsoid ~73m). 'MSL': Tüm değerler deniz seviyesine çevrilir. 'WGS84': Tüm değerler GPS elipsoidine çevrilir. Formül: h = H + N"
-              >ℹ</span
-            ></label
-          >
-          <select id="altitudeReference" class="range-slider">
-            <option value="native" selected>Native (Platform Varsayılan)</option>
-            <option value="msl">MSL (Deniz Seviyesi)</option>
-            <option value="wgs84">WGS84 (GPS Ellipsoid)</option>
-          </select>
-        </div>
-
         <div class="filter-actions">
           <button id="applyFilters">Uygula</button>
           <button id="resetFilters" class="reset">Sıfırla</button>
@@ -511,7 +501,6 @@
         enableFiltering: true,
         enableLowPassFilter: true,
         showJumpWarnings: true,
-        altitudeReference: 'native',
       };
 
       // Wei Ye filtreleme panel kontrolleri
@@ -588,27 +577,15 @@
           enableLowPassFilter: document.getElementById("enableLowPassFilter")
             .checked,
           showJumpWarnings: document.getElementById("showJumpWarnings").checked,
-          altitudeReference: document.getElementById("altitudeReference").value,
         };
 
         // SimpleLocate nesnesinin seçeneklerini güncelle
 
         if (window.filterControl) {
-          // Altitude referansı değişti mi kontrol et
-          const oldAltRef = window.filterControl.options.altitudeReference;
-          const newAltRef = settings.altitudeReference;
-          
           // Tüm ayarları güncelle
           Object.keys(settings).forEach((key) => {
             window.filterControl.options[key] = settings[key];
           });
-
-          // Altitude referansı değiştiyse ve konum varsa, marker'ı güncelle
-          // Bu, afterDeviceMove callback'ini tetikler ve altitude yeniden hesaplanır
-          if (oldAltRef !== newAltRef && window.filterControl._latitude && window.filterControl._altitude !== undefined) {
-            console.log(`Altitude referansı değişti: ${oldAltRef} → ${newAltRef}, marker güncelleniyor...`);
-            window.filterControl._updateMarker();
-          }
 
           // Uygulama bilgisi
           showStatusMessage("Filtre ayarları uygulandı");
@@ -637,8 +614,6 @@
           defaultFilters.enableLowPassFilter;
         document.getElementById("showJumpWarnings").checked =
           defaultFilters.showJumpWarnings;
-        document.getElementById("altitudeReference").value =
-          defaultFilters.altitudeReference;
 
         // Range değer göstergelerini güncelle
         document.querySelectorAll(".range-slider").forEach((slider) => {
@@ -712,11 +687,6 @@
                   const checkbox = document.getElementById(key);
                   if (checkbox) {
                     checkbox.checked = currentSettings[key];
-                  }
-                } else if (key === "altitudeReference") {
-                  const select = document.getElementById(key);
-                  if (select) {
-                    select.value = currentSettings[key];
                   }
                 }
               }
