@@ -1,4 +1,3 @@
-
 "use strict";
 
 // 1. Map oluşturma
@@ -9,9 +8,10 @@ const map = new L.Map("map", {
 });
 
 // Google Maps Layers
+// Kullanılabilir tipler: 'roadmap', 'satellite', 'terrain', 'hybrid'
 const googleStreets = L.gridLayer.googleMutant({
     type: 'roadmap', // Yol haritası
-});
+}).addTo(map); // Varsayılan olarak Streets göster
 
 const googleSatellite = L.gridLayer.googleMutant({
     type: 'satellite', // Uydu görünümü
@@ -25,10 +25,7 @@ const googleTerrain = L.gridLayer.googleMutant({
     type: 'terrain', // Arazi haritası
 });
 
-// Varsayılan olarak Streets göster
-googleStreets.addTo(map);
-
-// Layer kontrolü ekle (sağ üstte harita türü seçici)
+// Layer Control - Harita türleri arasında geçiş için
 const baseMaps = {
     "Google Streets": googleStreets,
     "Google Satellite": googleSatellite,
@@ -36,7 +33,10 @@ const baseMaps = {
     "Google Terrain": googleTerrain,
 };
 
-L.control.layers(baseMaps, null, { position: 'topright' }).addTo(map);
+L.control.layers(baseMaps, null, {
+    position: 'bottomleft',
+    collapsed: false
+}).addTo(map);
 
 // 2. Kat bilgileri ve SVG kapı çizgileri değişkenleri
 let floorAltitudes = {};
@@ -196,13 +196,10 @@ function createWeiYeInfoControl() {
             if (!accuracyEl || !filteredEl || !altitudeEl) return;
 
             accuracyEl.textContent = Math.round(stats.accuracy);
-            
-            // Altitude değerini göster
-            if (stats.altitude !== undefined && stats.altitude !== null && !isNaN(stats.altitude)) {
-                altitudeEl.textContent = stats.altitude.toFixed(1);
-            } else {
-                altitudeEl.textContent = "--";
-            }
+            altitudeEl.textContent =
+                stats.altitude !== undefined && stats.altitude !== null
+                    ? stats.altitude.toFixed(1)
+                    : "--";
 
             if (stats.accuracy <= 5) {
                 accuracyEl.className = "accuracy-value accuracy-good";
@@ -308,38 +305,64 @@ const control = new L.Control.SimpleLocate({
     enableLowPassFilter: true,
 
     afterDeviceMove: (location) => {
-        // Artık filtrelenmiş ve seçilen referansa göre dönüştürülmüş altitude
-        // location objesinden direkt alınıyor
-        const altitude = location.altitude !== undefined && location.altitude !== null 
-            ? location.altitude 
-            : NaN;
 
-        const lat = location.lat;
-        const lng = location.lng;
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const altitude =
+                    pos.coords.altitude !== null ? pos.coords.altitude : NaN;
 
-        weiYeInfoControl.updateStats({
-            accuracy: location.accuracy,
-            altitude: altitude,
-            isJump: location.isJump,
-            initializing:
-                control._weiYeState?.filteringStats.totalUpdates < 3,
-        });
+                const lat = location.lat;
+                const lng = location.lng;
 
-        // Location Logger'a log ekle
-        if (locationLogger) {
-            locationLogger.logLocation({
-                lat: lat,
-                lng: lng,
-                accuracy: location.accuracy,
-                altitude: altitude,
-                angle: location.angle,
-                isJump: location.isJump,
-                isFiltered: location.isFiltered
-            });
-        }
+                weiYeInfoControl.updateStats({
+                    accuracy: location.accuracy,
+                    altitude: altitude,
+                    isJump: location.isJump,
+                    initializing:
+                        control._weiYeState?.filteringStats.totalUpdates < 3,
+                });
 
-        // Konum güncellemesi
-        onUserLocationUpdate(lat, lng, altitude);
+                // Location Logger'a log ekle
+                if (locationLogger) {
+                    locationLogger.logLocation({
+                        lat: lat,
+                        lng: lng,
+                        accuracy: location.accuracy,
+                        altitude: altitude,
+                        angle: location.angle,
+                        isJump: location.isJump,
+                        isFiltered: location.isFiltered
+                    });
+                }
+
+                onUserLocationUpdate(lat, lng, altitude);
+            },
+            () => {
+                weiYeInfoControl.updateStats({
+                    accuracy: location.accuracy,
+                    altitude: NaN,
+                    isJump: location.isJump,
+                    initializing:
+                        control._weiYeState?.filteringStats.totalUpdates < 3,
+                });
+                
+                // Location Logger'a log ekle (altitude olmadan)
+                if (locationLogger) {
+                    locationLogger.logLocation({
+                        lat: location.lat,
+                        lng: location.lng,
+                        accuracy: location.accuracy,
+                        altitude: NaN,
+                        angle: location.angle,
+                        isJump: location.isJump,
+                        isFiltered: location.isFiltered
+                    });
+                }
+                
+                // Altitude alınamazsa da konumu güncelle (altitude NaN)
+                onUserLocationUpdate(location.lat, location.lng, NaN);
+            }
+        );
     },
 
     afterClick: (status) => {

@@ -160,7 +160,6 @@
             this._latitude = undefined;
             this._longitude = undefined;
             this._accuracy = undefined;
-            this._altitude = undefined;
             this._angle = undefined;
 
             this._lowPassFilterLat = null;
@@ -327,12 +326,6 @@
                 timestamp: now
             };
         },
-        
-        // Altitude filtreleme kaldırıldı - Raw değer kullanılıyor
-        _filterAltitude: function (rawAltitude) {
-            // Altitude filtreleme devre dışı - orijinal değeri döndür
-            return rawAltitude;
-        },
 
         // Kalman Filtreyi uygula
         _applyWeiYeFilter: function (position) {
@@ -360,7 +353,6 @@
                         latitude: this._weiYeState.lastFilteredPosition.latitude,
                         longitude: this._weiYeState.lastFilteredPosition.longitude,
                         accuracy: this._weiYeState.lastFilteredPosition.accuracy,
-                        altitude: this._weiYeState.lastFilteredPosition.altitude,
                         timestamp: position.timestamp
                     };
                 }
@@ -481,7 +473,6 @@
                             latitude: blendFactor * position.latitude + (1 - blendFactor) * filteredLat,
                             longitude: blendFactor * position.longitude + (1 - blendFactor) * filteredLng,
                             accuracy: position.accuracy,
-                            altitude: position.altitude,
                             timestamp: position.timestamp,
                             lpfApplied: true
                         };
@@ -494,7 +485,6 @@
                             latitude: filteredLat,
                             longitude: filteredLng,
                             accuracy: position.accuracy,
-                            altitude: position.altitude,
                             timestamp: position.timestamp,
                             lpfApplied: true
                         };
@@ -671,18 +661,6 @@
             if (this.options.showFilterDebug) {
                 this._visualizeFiltering();
             }
-            
-            // Altitude'u filtrele ve ekle
-            // Platform farklılıklarını koruyarak sadece gürültüyü temizle
-            // iOS'ta özellikle önemli: 43m → 6m gibi mantıksız düşüşleri engelle
-            if (position.altitude !== undefined && position.altitude !== null) {
-                kalmanFiltered.altitude = this._filterAltitude(position.altitude);
-            } else {
-                kalmanFiltered.altitude = position.altitude;
-            }
-            
-            // lastFilteredPosition'a da altitude ekle
-            this._weiYeState.lastFilteredPosition.altitude = kalmanFiltered.altitude;
 
             return kalmanFiltered;
         },
@@ -987,18 +965,8 @@
         },
 
         _onLocationFound: function (event) {
-            // Leaflet event formatını normalize et (event.latlng varsa, Geolocation API formatına çevir)
-            const position = event.latlng ? {
-                latitude: event.latlng.lat,
-                longitude: event.latlng.lng,
-                accuracy: event.accuracy,
-                altitude: event.altitude, // Leaflet event'inde altitude doğrudan var
-                altitudeAccuracy: event.altitudeAccuracy,
-                timestamp: event.timestamp || Date.now()
-            } : event; // Geolocation API coords formatında ise olduğu gibi kullan
-            
             // Wei Ye algoritması ile konumu filtrele
-            const filteredPosition = this._applyWeiYeFilter(position);
+            const filteredPosition = this._applyWeiYeFilter(event);
 
             // Önceki filtrelenmiş konumla aynıysa güncelleme yapma (micro değişiklikleri engelle)
             if (this._latitude && filteredPosition.latitude &&
@@ -1012,7 +980,6 @@
             this._latitude = filteredPosition.latitude;
             this._longitude = filteredPosition.longitude;
             this._accuracy = filteredPosition.accuracy;
-            this._altitude = filteredPosition.altitude; // Filtrelenmiş altitude
 
             // Marker'ı güncelle
             this._updateMarker();
@@ -1095,7 +1062,6 @@
                     lat: this._latitude,
                     lng: this._longitude,
                     accuracy: this._accuracy,
-                    altitude: this._altitude, // Filtrelenmiş altitude
                     angle: this._angle,
                     isFiltered: true,
                     isJump: this._weiYeState.isJumpDetected,
