@@ -165,6 +165,9 @@
             this._lowPassFilterLat = null;
             this._lowPassFilterLng = null;
             this._lowPassFilterInitialized = false;
+            
+            // iOS tespiti
+            this._isIOS = this._detectIOS();
 
             // Median Filtre için özellikleri ekle
             this._medianFilter = {
@@ -208,6 +211,16 @@
 
             // Filtreleme hata ayıklama için görsel öğeler
             this._rawPositionMarker = undefined;
+        },
+        
+        // iOS tespit fonksiyonu
+        _detectIOS: function() {
+            if (typeof navigator === 'undefined') return false;
+            
+            const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+            
+            // iOS cihazlarını tespit et
+            return /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
         },
 
         // Median Filtreyi uygula
@@ -319,6 +332,30 @@
             // Filtreleme devre dışıysa, orijinal konumu döndür
             if (!this.options.enableFiltering) {
                 return position;
+            }
+            
+            // iOS için özel parametre ayarlamaları
+            // Log analizine göre iOS'ta:
+            // - Doğruluk 35m ortalama (Android'de 2.5m)
+            // - Durağan halinde bile sürekli küçük hareketler (0.3-2m)
+            // - Altitüde çok değişken
+            const isIOSDevice = this._isIOS;
+            const isLowAccuracy = position.accuracy > 20;
+            
+            // iOS'ta çok düşük accuracy ile gelen ilk konumları filtrele
+            if (isIOSDevice && position.accuracy > 45) {
+                if (this.options.showFilterInfo) {
+                    console.log(`iOS: Çok düşük accuracy (${position.accuracy.toFixed(1)}m), konum göz ardı ediliyor`);
+                }
+                // Önceki konumu döndür veya boş dön
+                if (this._weiYeState.lastFilteredPosition) {
+                    return {
+                        latitude: this._weiYeState.lastFilteredPosition.latitude,
+                        longitude: this._weiYeState.lastFilteredPosition.longitude,
+                        accuracy: this._weiYeState.lastFilteredPosition.accuracy,
+                        timestamp: position.timestamp
+                    };
+                }
             }
 
             // İstatistikleri güncelle
@@ -470,11 +507,25 @@
             // Performans optimizasyonu: Çok düşük doğruluk değerlerinde (çok kötü GPS sinyali - binalarda)
             // daha agresif filtreleme yap, yüksek doğruluk değerlerinde (iyi GPS sinyali - açık alanda)
             // daha az filtreleme yap
-            const isLowAccuracy = lowPassFiltered.accuracy > 20;
+            const isLowAccuracyNow = lowPassFiltered.accuracy > 20;
 
             // 2. Median filtre her zaman uygula, ancak pencere boyutu accuracy'ye göre ayarla
-            // Yüksek accuracy: küçük pencere (3), Düşük accuracy: büyük pencere (5)
-            const medianWindowSize = isLowAccuracy ? this.options.medianWindowSize : Math.max(3, Math.floor(this.options.medianWindowSize * 0.6));
+            // iOS için özel: Log analizine göre iOS'ta daha büyük pencere gerekli
+            let medianWindowSize;
+            if (isIOSDevice && isLowAccuracyNow) {
+                // iOS + düşük accuracy: En büyük pencere (7-9)
+                medianWindowSize = Math.min(9, Math.floor(this.options.medianWindowSize * 1.5));
+            } else if (isIOSDevice) {
+                // iOS + normal accuracy: Biraz büyütülmüş pencere (5-7)
+                medianWindowSize = Math.min(7, this.options.medianWindowSize + 2);
+            } else if (isLowAccuracyNow) {
+                // Android + düşük accuracy: Normal pencere
+                medianWindowSize = this.options.medianWindowSize;
+            } else {
+                // Android + yüksek accuracy: Küçük pencere
+                medianWindowSize = Math.max(3, Math.floor(this.options.medianWindowSize * 0.6));
+            }
+            
             const originalWindowSize = this._medianFilter.windowSize;
             this._medianFilter.windowSize = medianWindowSize;
 
@@ -486,7 +537,14 @@
             // 3. Sıçrama tespiti: Low Pass filtrelenmiş konum ile median filtrelenmiş konum arasında
             // Bu daha tutarlı bir karşılaştırma sağlar
             // GPS'in doğruluğunu dikkate alarak sıçramayı hesapla - düşük doğrulukta daha toleranslı ol
-            const jumpDistanceThreshold = Math.max(5, lowPassFiltered.accuracy / 3); // En az 5m, doğruluk/3 kadar 
+            // iOS için özel: Log analizine göre iOS'ta daha yüksek eşik gerekli
+            let jumpDistanceThreshold;
+            if (isIOSDevice) {
+                // iOS'ta accuracy genellikle daha kötü, daha toleranslı ol
+                jumpDistanceThreshold = Math.max(8, lowPassFiltered.accuracy / 2.5); // En az 8m
+            } else {
+                jumpDistanceThreshold = Math.max(5, lowPassFiltered.accuracy / 3); // En az 5m
+            } 
 
             // Sapma mesafesini hesapla (Low Pass çıktısı ile median çıktısı arasında)
             const jumpDistance = L.latLng(lowPassFiltered.latitude, lowPassFiltered.longitude)
@@ -540,12 +598,21 @@
             let kalmanInput;
             if (isJump) {
                 // Ani sıçrama tespit edildiğinde ölçüme daha az güven
-                this._kalmanFilter.R_lat = this._kalmanFilter.R_lng = 1.0;
+                // iOS için daha yüksek R değeri (daha az güven)
+                this._kalmanFilter.R_lat = this._kalmanFilter.R_lng = isIOSDevice ? 1.5 : 1.0;
                 // Median filtrelenmiş değeri kullan (sıçramayı temizlemiş olur)
                 kalmanInput = medianFiltered;
             } else {
                 // Doğruluğa göre dinamik olarak Kalman filtre parametresini ayarla
-                const adaptiveR = Math.max(0.05, Math.min(0.5, lowPassFiltered.accuracy / 20));
+                // iOS için özel: Log analizine göre daha yüksek R gerekli (ölçümlere daha az güven)
+                let adaptiveR;
+                if (isIOSDevice) {
+                    // iOS: Daha yüksek R değeri (0.1-0.8 arası)
+                    adaptiveR = Math.max(0.1, Math.min(0.8, lowPassFiltered.accuracy / 15));
+                } else {
+                    // Android: Normal R değeri (0.05-0.5 arası)
+                    adaptiveR = Math.max(0.05, Math.min(0.5, lowPassFiltered.accuracy / 20));
+                }
                 this._kalmanFilter.R_lat = this._kalmanFilter.R_lng = adaptiveR;
 
                 // Her zaman Low Pass filtrelenmiş değeri kullan (tutarlılık için)
@@ -554,6 +621,29 @@
 
             // 4. Kalman filtresini uygula
             const kalmanFiltered = this._applyKalmanFilter(kalmanInput);
+            
+            // iOS için özel: Durağan halindeki küçük hareketleri filtrele
+            // Log analizine göre iOS'ta durağan halinde bile 0.3-2m arası sürekli hareket var
+            if (isIOSDevice && this._weiYeState.lastFilteredPosition && !isUserMoving) {
+                const distanceFromLast = L.latLng(
+                    this._weiYeState.lastFilteredPosition.latitude,
+                    this._weiYeState.lastFilteredPosition.longitude
+                ).distanceTo(L.latLng(kalmanFiltered.latitude, kalmanFiltered.longitude));
+                
+                // Durağan halinde 2m'den az hareket varsa, önceki konumu döndür (gürültüyü yok say)
+                if (distanceFromLast < 2.0) {
+                    if (this.options.showFilterInfo) {
+                        console.log(`iOS: Durağan halinde küçük hareket filtrelendi (${distanceFromLast.toFixed(2)}m)`);
+                    }
+                    
+                    return {
+                        latitude: this._weiYeState.lastFilteredPosition.latitude,
+                        longitude: this._weiYeState.lastFilteredPosition.longitude,
+                        accuracy: kalmanFiltered.accuracy, // Accuracy'yi güncelle
+                        timestamp: position.timestamp
+                    };
+                }
+            }
 
             // 5. Filtrelenmiş konumun bilgilerini kaydet
             this._weiYeState.lastFilteredPosition = {
@@ -563,7 +653,8 @@
                 rawLatitude: position.latitude,
                 rawLongitude: position.longitude,
                 isFiltered: true,
-                isJump: isJump
+                isJump: isJump,
+                timestamp: position.timestamp
             };
 
             // Filtreleme görsellerini güncelle (opsiyonel)
@@ -1081,15 +1172,30 @@
         },
 
         // Doğruluk değerine göre renk döndür
+        // iOS için özel: Log analizine göre iOS'ta accuracy değerleri daha yüksek
         _getAccuracyColor: function (accuracy) {
-            if (accuracy <= 5) {
-                return '#4CAF50'; // İyi doğruluk - Yeşil
-            } else if (accuracy <= 15) {
-                return '#FFC107'; // Orta doğruluk - Sarı
-            } else if (accuracy <= 30) {
-                return '#FF9800'; // Düşük doğruluk - Turuncu
+            if (this._isIOS) {
+                // iOS için daha toleranslı eşikler
+                if (accuracy <= 10) {
+                    return '#4CAF50'; // İyi doğruluk - Yeşil
+                } else if (accuracy <= 25) {
+                    return '#FFC107'; // Orta doğruluk - Sarı
+                } else if (accuracy <= 40) {
+                    return '#FF9800'; // Düşük doğruluk - Turuncu
+                } else {
+                    return '#F44336'; // Çok düşük doğruluk - Kırmızı
+                }
             } else {
-                return '#F44336'; // Çok düşük doğruluk - Kırmızı
+                // Android için normal eşikler
+                if (accuracy <= 5) {
+                    return '#4CAF50'; // İyi doğruluk - Yeşil
+                } else if (accuracy <= 15) {
+                    return '#FFC107'; // Orta doğruluk - Sarı
+                } else if (accuracy <= 30) {
+                    return '#FF9800'; // Düşük doğruluk - Turuncu
+                } else {
+                    return '#F44336'; // Çok düşük doğruluk - Kırmızı
+                }
             }
         },
 
@@ -1241,8 +1347,15 @@
             // Hızı hesapla (m/s)
             const avgSpeed = (totalDistance / (timeSpan / 1000)); // m/s
 
-            // 0.5 m/s'den fazla hareket varsa, hareket halinde kabul et
-            return avgSpeed > 0.5;
+            // iOS için özel: Log analizine göre iOS'ta durağan halinde bile 0.3-2m/s hareket var
+            // Daha yüksek eşik kullan
+            const speedThreshold = this._isIOS ? 0.8 : 0.5; // iOS: 0.8 m/s, Android: 0.5 m/s
+            
+            if (this.options.showFilterInfo && this._isIOS) {
+                console.log(`iOS: Hareket tespiti - Hız: ${avgSpeed.toFixed(2)} m/s, Eşik: ${speedThreshold} m/s`);
+            }
+
+            return avgSpeed > speedThreshold;
         },
 
         // Hareket geçmişini güncelle
