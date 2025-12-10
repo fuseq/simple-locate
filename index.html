@@ -260,6 +260,11 @@
         -webkit-font-smoothing: antialiased;
       }
 
+      /* Layer control'ü yukarı taşı (tüm cihazlar için) */
+      .leaflet-control-layers {
+        margin-bottom: 60px !important;
+      }
+
       @media (max-width: 768px) {
         .filter-panel {
           width: 200px;
@@ -275,7 +280,7 @@
         .leaflet-control-layers {
           max-height: 50vh !important;
           overflow-y: auto !important;
-          margin-bottom: 10px !important;
+          margin-bottom: 80px !important; /* Mobilde daha yukarı */
         }
         
         .leaflet-control-layers-expanded {
