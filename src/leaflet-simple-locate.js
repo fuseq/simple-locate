@@ -169,10 +169,6 @@
             
             // iOS tespiti
             this._isIOS = this._detectIOS();
-            
-            // Altitude filtreleme için geçmiş
-            this._altitudeHistory = [];
-            this._maxAltitudeHistory = 5; // Son 5 ölçümü tut
 
             // Median Filtre için özellikleri ekle
             this._medianFilter = {
@@ -332,45 +328,10 @@
             };
         },
         
-        // Altitude filtreleme - Sadece gürültüyü temizle
+        // Altitude filtreleme kaldırıldı - Raw değer kullanılıyor
         _filterAltitude: function (rawAltitude) {
-            // Altitude değeri yoksa, direkt dön
-            if (typeof rawAltitude !== 'number' || !isFinite(rawAltitude)) {
-                return rawAltitude;
-            }
-            
-            // Geçmişe ekle
-            this._altitudeHistory.push(rawAltitude);
-            
-            // Maksimum boyutu aşarsa en eskisini kaldır
-            if (this._altitudeHistory.length > this._maxAltitudeHistory) {
-                this._altitudeHistory.shift();
-            }
-            
-            // Yeterli veri yoksa, ham değeri döndür
-            if (this._altitudeHistory.length < 3) {
-                return rawAltitude;
-            }
-            
-            // Basit medyan filtre (Platform bağımsız)
-            const sorted = [...this._altitudeHistory].sort((a, b) => a - b);
-            const median = sorted[Math.floor(sorted.length / 2)];
-            
-            // Standart sapma hesapla (aykırı değer tespiti için)
-            const mean = this._altitudeHistory.reduce((a, b) => a + b, 0) / this._altitudeHistory.length;
-            const variance = this._altitudeHistory.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / this._altitudeHistory.length;
-            const stdDev = Math.sqrt(variance);
-            
-            // Aykırı değer tespiti (2.5σ eşik)
-            const outlierThreshold = 2.5 * stdDev;
-            const isOutlier = Math.abs(rawAltitude - median) > Math.max(outlierThreshold, 10); // En az 10m
-            
-            if (isOutlier && this.options.showFilterInfo) {
-                console.log(`Altitude aykırı değer: ${rawAltitude.toFixed(1)}m → ${median.toFixed(1)}m (std: ${stdDev.toFixed(1)}m)`);
-            }
-            
-            // Aykırı değerse medyan, değilse medyan kullan (tutarlılık için)
-            return median;
+            // Altitude filtreleme devre dışı - orijinal değeri döndür
+            return rawAltitude;
         },
 
         // Kalman Filtreyi uygula
@@ -713,14 +674,8 @@
             // iOS'ta özellikle önemli: 43m → 6m gibi mantıksız düşüşleri engelle
             if (position.altitude !== undefined && position.altitude !== null) {
                 kalmanFiltered.altitude = this._filterAltitude(position.altitude);
-                if (this.options.showFilterInfo) {
-                    console.log(`Altitude: Ham=${position.altitude.toFixed(1)}m, Filtreli=${kalmanFiltered.altitude.toFixed(1)}m`);
-                }
             } else {
                 kalmanFiltered.altitude = position.altitude;
-                if (this.options.showFilterInfo) {
-                    console.log(`Altitude verisi yok: ${position.altitude}`);
-                }
             }
 
             return kalmanFiltered;
@@ -1120,9 +1075,6 @@
         _updateMarker: function () {
             if (this.options.afterDeviceMove) {
                 // Callback fonksiyonunu çağır, filtrelenmiş konumu ve filtreleme istatistiklerini kullan
-                if (this.options.showFilterInfo) {
-                    console.log(`_updateMarker - altitude: ${this._altitude}`);
-                }
                 this.options.afterDeviceMove({
                     lat: this._latitude,
                     lng: this._longitude,
