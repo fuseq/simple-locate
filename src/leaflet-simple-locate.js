@@ -713,8 +713,14 @@
             // iOS'ta özellikle önemli: 43m → 6m gibi mantıksız düşüşleri engelle
             if (position.altitude !== undefined && position.altitude !== null) {
                 kalmanFiltered.altitude = this._filterAltitude(position.altitude);
+                if (this.options.showFilterInfo) {
+                    console.log(`Altitude: Ham=${position.altitude.toFixed(1)}m, Filtreli=${kalmanFiltered.altitude.toFixed(1)}m`);
+                }
             } else {
                 kalmanFiltered.altitude = position.altitude;
+                if (this.options.showFilterInfo) {
+                    console.log(`Altitude verisi yok: ${position.altitude}`);
+                }
             }
 
             return kalmanFiltered;
@@ -1114,6 +1120,9 @@
         _updateMarker: function () {
             if (this.options.afterDeviceMove) {
                 // Callback fonksiyonunu çağır, filtrelenmiş konumu ve filtreleme istatistiklerini kullan
+                if (this.options.showFilterInfo) {
+                    console.log(`_updateMarker - altitude: ${this._altitude}`);
+                }
                 this.options.afterDeviceMove({
                     lat: this._latitude,
                     lng: this._longitude,

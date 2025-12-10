@@ -307,8 +307,7 @@ const control = new L.Control.SimpleLocate({
     enableLowPassFilter: true,
 
     afterDeviceMove: (location) => {
-        // Artık filtrelenmiş ve seçilen referansa göre dönüştürülmüş altitude
-        // location objesinden direkt alınıyor
+        // Artık filtrelenmiş altitude location objesinden direkt alınıyor
         const altitude = location.altitude !== undefined && location.altitude !== null 
             ? location.altitude 
             : NaN;
