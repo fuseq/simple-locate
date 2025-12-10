@@ -462,6 +462,23 @@
           <span class="range-value">0.5</span>
         </div>
 
+        <div class="filter-group">
+          <label for="altitudeReference"
+            >Altitude Referansı
+            <span
+              class="info-icon"
+              data-title="Altitude Referans Sistemi"
+              data-info="Yükseklik referans sistemi. 'Native': Her platform kendi sistemini kullanır (iOS: Deniz seviyesi ~40m, Android: GPS Ellipsoid ~73m). 'MSL': Tüm değerler deniz seviyesine çevrilir. 'WGS84': Tüm değerler GPS elipsoidine çevrilir. Formül: h = H + N"
+              >ℹ</span
+            ></label
+          >
+          <select id="altitudeReference" class="range-slider">
+            <option value="native" selected>Native (Platform Varsayılan)</option>
+            <option value="msl">MSL (Deniz Seviyesi)</option>
+            <option value="wgs84">WGS84 (GPS Ellipsoid)</option>
+          </select>
+        </div>
+
         <div class="filter-actions">
           <button id="applyFilters">Uygula</button>
           <button id="resetFilters" class="reset">Sıfırla</button>
@@ -494,6 +511,7 @@
         enableFiltering: true,
         enableLowPassFilter: true,
         showJumpWarnings: true,
+        altitudeReference: 'native',
       };
 
       // Wei Ye filtreleme panel kontrolleri
@@ -570,6 +588,7 @@
           enableLowPassFilter: document.getElementById("enableLowPassFilter")
             .checked,
           showJumpWarnings: document.getElementById("showJumpWarnings").checked,
+          altitudeReference: document.getElementById("altitudeReference").value,
         };
 
         // SimpleLocate nesnesinin seçeneklerini güncelle
@@ -607,6 +626,8 @@
           defaultFilters.enableLowPassFilter;
         document.getElementById("showJumpWarnings").checked =
           defaultFilters.showJumpWarnings;
+        document.getElementById("altitudeReference").value =
+          defaultFilters.altitudeReference;
 
         // Range değer göstergelerini güncelle
         document.querySelectorAll(".range-slider").forEach((slider) => {
@@ -680,6 +701,11 @@
                   const checkbox = document.getElementById(key);
                   if (checkbox) {
                     checkbox.checked = currentSettings[key];
+                  }
+                } else if (key === "altitudeReference") {
+                  const select = document.getElementById(key);
+                  if (select) {
+                    select.value = currentSettings[key];
                   }
                 }
               }
