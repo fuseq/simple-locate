@@ -35,7 +35,7 @@ const baseMaps = {
 
 L.control.layers(baseMaps, null, {
     position: 'bottomleft',
-    collapsed: false
+    collapsed: true // Mobilde taşma olmaması için kapalı başlat
 }).addTo(map);
 
 // 2. Kat bilgileri ve SVG kapı çizgileri değişkenleri
