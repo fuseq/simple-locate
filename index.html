@@ -15,21 +15,50 @@
       crossorigin=""
     ></script>
     <script src="https://cdn.jsdelivr.net/npm/low-pass-filter@1.0.0/dist/low-pass-filter.min.js"></script>
-    <script src="src/leaflet-simple-locate.js"></script>
-    
-    <!-- Google Maps API - UYARI: Kendi API key'inizi kullanın -->
     <script>
-        // API key'inizi buraya ekleyin veya environment variable kullanın
-        const GOOGLE_MAPS_API_KEY = 'AIzaSyCmurfWEw-GKHOy1AiGvl61BovbpKdWAso'; // Buraya kendi key'inizi ekleyin
-        if (GOOGLE_MAPS_API_KEY === 'AIzaSyCmurfWEw-GKHOy1AiGvl61BovbpKdWAso') {
-            console.warn('⚠️ Google Maps API key ayarlanmamış! location-app.js içinde Google Maps katmanları devre dışı bırakıldı.');
+        // LowPassFilter kontrolü
+        if (typeof LowPassFilter === 'undefined') {
+            console.warn('⚠️ LowPassFilter CDN\'den yüklenemedi, basit implementasyon kullanılacak');
+            // Basit Low Pass Filter implementasyonu
+            window.LowPassFilter = class {
+                constructor(sampleFrequency, tau) {
+                    this.tau = tau;
+                    this.sampleFrequency = sampleFrequency;
+                    this.alpha = 1 / (1 + this.tau * this.sampleFrequency);
+                    this.output = null;
+                }
+                addSample(input) {
+                    if (this.output === null) {
+                        this.output = input;
+                    } else {
+                        this.output = this.alpha * input + (1 - this.alpha) * this.output;
+                    }
+                }
+                lastOutput() {
+                    return this.output;
+                }
+                setTau(tau) {
+                    this.tau = tau;
+                    this.alpha = 1 / (1 + this.tau * this.sampleFrequency);
+                }
+                setSampleFrequency(freq) {
+                    this.sampleFrequency = freq;
+                    this.alpha = 1 / (1 + this.tau * this.sampleFrequency);
+                }
+            };
+            console.log('✅ Fallback LowPassFilter yüklendi');
+        } else {
+            console.log('✅ LowPassFilter CDN\'den başarıyla yüklendi');
         }
     </script>
+    <script src="src/leaflet-simple-locate.js"></script>
+    
+    <!-- Google Maps API -->
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCmurfWEw-GKHOy1AiGvl61BovbpKdWAso"></script>
+    <!-- Leaflet.GridLayer.GoogleMutant Plugin -->
     <script src="https://unpkg.com/leaflet.gridlayer.googlemutant@latest/dist/Leaflet.GoogleMutant.js"></script>
 
     <link rel="stylesheet" href="examples/demo.css" />
-    <link rel="stylesheet" href="examples/style.css" />
     <link rel="stylesheet" href="examples/location-styles.css" />
     <link rel="stylesheet" href="examples/location-logger.css" />
 
