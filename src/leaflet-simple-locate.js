@@ -1162,12 +1162,12 @@
             
             console.log('📍 [8] Icon seçildi:', icon_name);
 
-            // Doğruluk 5 metrenin üzerindeyse, sadece soluk konum dairesini göster, işaretçiyi gizle
-            const isLowAccuracy = this._accuracy > 5;
+            // TEST: Doğruluk 15 metrenin üzerindeyse, sadece soluk konum dairesini göster, işaretçiyi gizle
+            const isLowAccuracy = this._accuracy > 15;
             console.log('📍 [9] Accuracy kontrolü:', {
                 accuracy: this._accuracy,
                 isLowAccuracy: isLowAccuracy,
-                threshold: 5
+                threshold: 15
             });
 
             // Doğruluk dairesini her zaman güncelle - RADİKAL ÇÖZÜM
@@ -1249,7 +1249,7 @@
                 
                 // RADİKAL: Harita her hareket ettiğinde veya zoom değiştiğinde yeniden uygula
                 this._map.on('moveend zoomend', () => {
-                    if (this._circle && this._accuracy > 5) {
+                    if (this._circle && this._accuracy > 15) {  // TEST: 15m eşiği
                         this._forceCircleDashArray(true);
                     }
                 });
@@ -1324,7 +1324,7 @@
             // Her 100ms'de bir kontrol et ve gerekirse düzelt
             this._circleStyleInterval = setInterval(() => {
                 if (this._circle && this._circle._path && this._accuracy) {
-                    const isLowAccuracy = this._accuracy > 5;
+                    const isLowAccuracy = this._accuracy > 15;  // TEST: 15m eşiği
                     const path = this._circle._path;
                     const currentDashArray = path.getAttribute('stroke-dasharray');
                     
