@@ -44,17 +44,14 @@
             zoomLevel: undefined,
             drawCircle: true,
 
-            // Wei Ye algoritması için seçenekler
-            medianWindowSize: 5,          // Median filtre için pencere boyutu
-            kalmanProcessNoise: 0.01,     // Kalman filtresi için Q değeri
-            kalmanMeasurementNoise: 0.1,  // Kalman filtresi için R değeri
-            jumpThreshold: 0.0001,        // Ani sıçrama tespit eşiği (yaklaşık 10-20m)
-            showFilterInfo: false,        // Filtreleme bilgisini konsola yazdır
-            enableFiltering: true,        // Filtrelemeyi etkinleştir/devre dışı bırak
-            showFilterDebug: false,       // Debug bilgilerini göster
-            showJumpWarnings: true,       // Sıçrama uyarılarını göster
-            lowPassFilterTau: 1.0,        // Filtre zaman sabiti (saniye)
-            enableLowPassFilter: true,    // Low Pass Filtreyi etkinleştir/devre dışı bırak
+            // Wei Ye algoritması için optimal default parametreler
+            medianWindowSize: 3,          // Median filtre pencere boyutu (hızlı tepki)
+            kalmanProcessNoise: 0.05,     // Kalman Q değeri (dengeli)
+            kalmanMeasurementNoise: 0.2,  // Kalman R değeri (orta güven)
+            jumpThreshold: 0.0005,        // Ani sıçrama tespit eşiği
+            enableFiltering: true,        // Filtreleme aktif
+            lowPassFilterTau: 0.5,        // Low Pass tau (hızlı tepki)
+            enableLowPassFilter: true,    // Low Pass aktif
 
             afterClick: null,
             afterMarkerAdd: null,
@@ -209,9 +206,6 @@
                 timestamps: [],
                 maxSize: 5 // Son 5 konumu tut
             };
-
-            // Filtreleme hata ayıklama için görsel öğeler
-            this._rawPositionMarker = undefined;
         },
         
         // iOS tespit fonksiyonu
@@ -249,9 +243,6 @@
                         m.accuracyHistory = [];
                         m.timestampHistory = [];
 
-                        if (this.options.showFilterInfo) {
-                            console.log(`Median Filter: iOS - Büyük sıçrama ve gecikme tespit edildi, geçmiş temizlendi`);
-                        }
                     }
                 }
             }
@@ -262,9 +253,6 @@
                 const lastLng = m.lngHistory[m.lngHistory.length - 1];
                 const distance = L.latLng(lastLat, lastLng).distanceTo(L.latLng(position.latitude, position.longitude));
 
-                if (this.options.showFilterInfo && distance > 50) {
-                    console.log(`Wei Ye: Potansiyel aykırı değer tespit edildi - ${Math.round(distance)}m`);
-                }
             }
 
             // Yeni değerleri geçmişe ekle
@@ -330,26 +318,16 @@
 
         // Kalman Filtreyi uygula
         _applyWeiYeFilter: function (position) {
-            console.log('🔧 [Wei Ye] Filtre başladı, gelen position:', position);
-            
             // Filtreleme devre dışıysa, orijinal konumu döndür
             if (!this.options.enableFiltering) {
-                console.log('🔧 [Wei Ye] Filtreleme devre dışı');
                 return position;
             }
             
-            // iOS için özel parametre ayarlamaları
-            // Log analizine göre iOS'ta:
-            // - Doğruluk 35m ortalama (Android'de 2.5m)
-            // - Durağan halinde bile sürekli küçük hareketler (0.3-2m)
-            // - Altitüde çok değişken
             const isIOSDevice = this._isIOS;
             const isLowAccuracy = position.accuracy > 20;
             
             // iOS'ta çok düşük accuracy ile gelen konumları filtrele (sadece önceki konum varsa)
             if (isIOSDevice && position.accuracy > 45 && this._weiYeState.lastFilteredPosition) {
-                console.log(`🔧 [Wei Ye] iOS: Çok düşük accuracy (${position.accuracy.toFixed(1)}m), önceki konum kullanılıyor`);
-                // Önceki konumu döndür
                 return {
                     latitude: this._weiYeState.lastFilteredPosition.latitude,
                     longitude: this._weiYeState.lastFilteredPosition.longitude,
@@ -357,8 +335,6 @@
                     timestamp: position.timestamp
                 };
             }
-            
-            console.log('🔧 [Wei Ye] iOS kontrolü geçildi, filtreleme devam ediyor');
 
             // İstatistikleri güncelle
             this._weiYeState.filteringStats.totalUpdates++;
@@ -479,9 +455,6 @@
                             lpfApplied: true
                         };
 
-                        if (this.options.showFilterInfo) {
-                            console.log(`Low Pass Filter: iOS - Filtrelenmiş konum çok uzakta (${Math.round(filteredDistance)}m), dinamik blend uygulandı (${blendFactor.toFixed(2)})`);
-                        }
                     } else {
                         lowPassFiltered = {
                             latitude: filteredLat,
@@ -492,10 +465,6 @@
                         };
                     }
 
-                    // Debug için konsola yazdır (opsiyonel)
-                    if (this.options.showFilterInfo) {
-                        console.log(`Low Pass Filter: ${Math.abs(lowPassFiltered.latitude - position.latitude).toFixed(8)} lat diff, tau: ${dynamicTau.toFixed(2)}, timeDiff: ${timeDiff.toFixed(2)}s`);
-                    }
                 }
             } else if (this.options.enableLowPassFilter !== false && typeof LowPassFilter === 'undefined') {
                 console.warn('⚠️ LowPassFilter kütüphanesi yüklenemedi, Low Pass Filter atlanıyor');
@@ -503,9 +472,6 @@
                 lowPassFiltered = position;
             }
 
-            // Wei Ye algoritmasına Low Pass Filter'dan geçirilmiş veriyi gönder
-            // NOT: Burada "position" yerine "lowPassFiltered" kullanıyoruz
-            console.log('🔧 [Wei Ye] Low Pass sonrası:', lowPassFiltered);
 
             // Hareket geçmişini güncelle (Low Pass filtrelenmiş konum ile)
             // Bu, hareket tespiti için kullanılacak
@@ -537,7 +503,6 @@
             this._medianFilter.windowSize = medianWindowSize;
 
             let medianFiltered = this._applyMedianFilter(lowPassFiltered);
-            console.log('🔧 [Wei Ye] Median sonrası:', medianFiltered);
 
             // Pencere boyutunu geri yükle
             this._medianFilter.windowSize = originalWindowSize;
@@ -573,15 +538,6 @@
             if (isJump) {
                 this._weiYeState.filteringStats.jumpsDetected++;
                 this._weiYeState.isJumpDetected = true;
-
-                if (this.options.showFilterInfo) {
-                    console.log(`Wei Ye: Sıçrama tespit edildi (${Math.round(jumpDistance)}m) - Median filtrelenmiş değer kullanılıyor`);
-                }
-
-                // Sıçrama uyarısı göster - sadece büyük sıçramalarda (10m üstü)
-                if (this.options.showJumpWarnings && jumpDistance > 10) {
-                    this._showJumpWarning(jumpDistance);
-                }
             } else {
                 this._weiYeState.isJumpDetected = false;
             }
@@ -628,9 +584,7 @@
             }
 
             // 4. Kalman filtresini uygula
-            console.log('🔧 [Wei Ye] Kalman input:', kalmanInput);
             const kalmanFiltered = this._applyKalmanFilter(kalmanInput);
-            console.log('🔧 [Wei Ye] Kalman output:', kalmanFiltered);
             
             // iOS için özel: Durağan halindeki küçük hareketleri filtrele
             // Log analizine göre iOS'ta durağan halinde bile 0.3-2m arası sürekli hareket var
@@ -642,10 +596,6 @@
                 
                 // Durağan halinde 2m'den az hareket varsa, önceki konumu döndür (gürültüyü yok say)
                 if (distanceFromLast < 2.0) {
-                    if (this.options.showFilterInfo) {
-                        console.log(`iOS: Durağan halinde küçük hareket filtrelendi (${distanceFromLast.toFixed(2)}m)`);
-                    }
-                    
                     return {
                         latitude: this._weiYeState.lastFilteredPosition.latitude,
                         longitude: this._weiYeState.lastFilteredPosition.longitude,
@@ -667,78 +617,7 @@
                 timestamp: position.timestamp
             };
 
-            // Filtreleme görsellerini güncelle (opsiyonel)
-            if (this.options.showFilterDebug) {
-                this._visualizeFiltering();
-            }
-
-            console.log('🔧 [Wei Ye] FİLTRE TAMAMLANDI, dönen değer:', kalmanFiltered);
             return kalmanFiltered;
-        },
-
-        // Sıçrama uyarısı göster
-        _showJumpWarning: function (distance) {
-            // Uyarı elementi zaten varsa kaldır
-            const existingWarning = document.querySelector('.wei-ye-jump-warning');
-            if (existingWarning) {
-                existingWarning.parentNode.removeChild(existingWarning);
-            }
-
-            // Uyarı elementi oluştur
-            const warning = L.DomUtil.create('div', 'wei-ye-jump-warning');
-            warning.innerHTML = `GPS Sıçraması Tespit Edildi (${Math.round(distance)}m)`;
-            document.body.appendChild(warning);
-
-            // 3 saniye sonra kaldır
-            setTimeout(() => {
-                if (warning.parentNode) {
-                    warning.parentNode.removeChild(warning);
-                }
-            }, 3000);
-        },
-
-        // Ham ve filtrelenmiş konumları görselleştir (opsiyonel)
-        _visualizeFiltering: function () {
-            const state = this._weiYeState;
-
-            if (!state.lastRawPosition || !state.lastFilteredPosition) {
-                return;
-            }
-
-            // Ham konum göstergesi
-            if (!this._rawPositionMarker) {
-                this._rawPositionMarker = L.circleMarker(
-                    [state.lastRawPosition.latitude, state.lastRawPosition.longitude],
-                    {
-                        radius: 4,
-                        color: '#F44336',
-                        fillColor: '#F44336',
-                        fillOpacity: 0.5
-                    }
-                ).addTo(this._map);
-            } else {
-                this._rawPositionMarker.setLatLng([state.lastRawPosition.latitude, state.lastRawPosition.longitude]);
-            }
-
-            // Sıçrama tespit edildiğinde gösterge çizgisi
-            if (state.isJumpDetected) {
-                const jumpLine = L.polyline([
-                    [state.lastRawPosition.latitude, state.lastRawPosition.longitude],
-                    [state.lastFilteredPosition.latitude, state.lastFilteredPosition.longitude]
-                ], {
-                    color: '#FF5722',
-                    dashArray: '5, 5',
-                    weight: 2,
-                    opacity: 0.7
-                }).addTo(this._map);
-
-                // 3 saniye sonra çizgiyi kaldır
-                setTimeout(() => {
-                    if (jumpLine && this._map) {
-                        this._map.removeLayer(jumpLine);
-                    }
-                }, 3000);
-            }
         },
 
         onAdd: function (map) {
@@ -776,17 +655,6 @@
         getAngle: function () {
             if (!this._angle) return null;
             return this._angle;
-        },
-
-        // Filtreleme istatistiklerini al
-        getFilteringStats: function () {
-            return this._weiYeState.filteringStats;
-        },
-
-        // Filtrelemeyi etkinleştir/devre dışı bırak
-        setFilteringEnabled: function (enabled) {
-            this.options.enableFiltering = enabled;
-            return this;
         },
 
         setZoomLevel: function (level) {
@@ -829,15 +697,12 @@
                     this._map.on("layeradd", this._onLayerAdd, this);
 
                     this._checkGeolocation().then((event) => {
-                        console.log("✅ _checkGeolocation BAŞARILI!", event.coords);
                         this._geolocation = true;
-                        console.log("✅ this._geolocation = true olarak ayarlandı");
                         this._onLocationFound(event.coords);
                         if (this.options.setViewAfterClick) this._setView();
                         this._watchGeolocation();
                         this._checkClickResult();
                     }).catch((error) => {
-                        console.error("❌ _checkGeolocation BAŞARISIZ!", error);
                         this._geolocation = false;
                         this._checkClickResult();
                     });
@@ -887,24 +752,12 @@
             // Hareket geçmişini sıfırla
             this._movementHistory.positions = [];
             this._movementHistory.timestamps = [];
-
-            // Debug görsellerini kaldır
-            if (this._rawPositionMarker && this._map) {
-                this._map.removeLayer(this._rawPositionMarker);
-                this._rawPositionMarker = undefined;
-            }
         },
 
         _checkClickResult: function () {
-            console.log("🔍 _checkClickResult:", {
-                geolocation: this._geolocation,
-                orientation: this._orientation
-            });
-            
             this._updateButton();
 
             if (this.options.afterClick && typeof this._geolocation !== "undefined" && typeof this._orientation !== "undefined") {
-                console.log("🔍 afterClick callback çağrılıyor");
                 this.options.afterClick({
                     geolocation: this._geolocation,
                     orientation: this._orientation,
@@ -912,7 +765,6 @@
             }
 
             if (this._geolocation === false && this._orientation === false) {
-                console.log("⚠️ Her iki servis de başarısız, sıfırlanıyor");
                 this._clicked = undefined;
                 this._geolocation = undefined;
                 this._orientation = undefined;
@@ -920,23 +772,17 @@
         },
 
         _checkGeolocation: function () {
-            console.log("🔍 _checkGeolocation başlatılıyor...");
-            
             if (typeof navigator !== "object" || !("geolocation" in navigator) ||
                 typeof navigator.geolocation.getCurrentPosition !== "function" || typeof navigator.geolocation.watchPosition !== "function") {
-                console.error("❌ Geolocation API mevcut değil!");
                 return Promise.reject();
             }
 
-            console.log("✅ Geolocation API mevcut, konum isteniyor...");
             return new Promise((resolve, reject) => {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        console.log("✅ İlk konum alındı:", position.coords);
                         resolve(position);
                     },
                     (error) => {
-                        console.error("❌ İlk konum alınamadı:", error);
                         reject(error);
                     },
                     { maximumAge: 0, enableHighAccuracy: true }
@@ -958,7 +804,6 @@
         },
 
         _watchGeolocation: function () {
-            console.log("🚀 Geolocation takibi başlatılıyor...");
             this._map.locate({ watch: true, enableHighAccuracy: true });
             this._map.on("locationfound", this._onLocationFound, this);
             this._map.on("locationerror", this._onLocationError, this);
@@ -967,12 +812,10 @@
         },
         
         _onLocationError: function (error) {
-            console.error("❌ Geolocation hatası:", error);
+            // Hata sessizce işlenir
         },
 
         _unwatchGeolocation: function () {
-            console.log("🛑 Geolocation takibi durduruluyor...");
-            
             // RADİKAL: Stil kontrolünü durdur
             this._stopCircleStyleWatcher();
             
@@ -1008,19 +851,10 @@
         },
 
         _onLocationFound: function (event) {
-            console.log('🎯 [1] _onLocationFound çağrıldı:', {
-                lat: event.latitude,
-                lng: event.longitude,
-                accuracy: event.accuracy
-            });
-
             // Wei Ye algoritması ile konumu filtrele
             const filteredPosition = this._applyWeiYeFilter(event);
             
-            console.log('🎯 [2] Filtre sonrası:', filteredPosition);
-            
             if (!filteredPosition || !filteredPosition.latitude || !filteredPosition.longitude) {
-                console.error('❌ FİLTRE HATASI: Geçersiz değer döndü!', filteredPosition);
                 return;
             }
 
@@ -1031,7 +865,6 @@
                 Math.round(this._longitude * 1000000) === Math.round(filteredPosition.longitude * 1000000) &&
                 this._accuracy && filteredPosition.accuracy &&
                 Math.round(this._accuracy * 100) === Math.round(filteredPosition.accuracy * 100)) {
-                console.log('🎯 [3] Konum aynı, güncelleme yapılmadı');
                 return;
             }
 
@@ -1039,12 +872,6 @@
             this._latitude = filteredPosition.latitude;
             this._longitude = filteredPosition.longitude;
             this._accuracy = filteredPosition.accuracy;
-
-            console.log('🎯 [4] Yeni konum kaydedildi:', {
-                lat: this._latitude,
-                lng: this._longitude,
-                accuracy: this._accuracy
-            });
 
             // Marker'ı güncelle
             this._updateMarker();
@@ -1121,14 +948,6 @@
         },
 
         _updateMarker: function () {
-            console.log('📍 [5] _updateMarker çağrıldı:', {
-                lat: this._latitude,
-                lng: this._longitude,
-                accuracy: this._accuracy,
-                geolocation: this._geolocation,
-                orientation: this._orientation
-            });
-            
             if (this.options.afterDeviceMove) {
                 // Callback fonksiyonunu çağır, filtrelenmiş konumu ve filtreleme istatistiklerini kullan
                 this.options.afterDeviceMove({
@@ -1143,12 +962,6 @@
             }
 
             if (!this._latitude || !this._longitude || (this.options.drawCircle && !this._accuracy)) {
-                console.log('📍 [6] Marker oluşturulamıyor - eksik veri:', {
-                    hasLat: !!this._latitude,
-                    hasLng: !!this._longitude,
-                    hasAccuracy: !!this._accuracy,
-                    drawCircle: this.options.drawCircle
-                });
                 return;
             }
 
@@ -1156,19 +969,11 @@
             if (this._geolocation && this._orientation && this._angle) icon_name = "iconOrientation";
             else if (this._geolocation) icon_name = "iconGeolocation";
             else {
-                console.log('📍 [7] Icon seçilemedi, geolocation:', this._geolocation);
                 return;
             }
-            
-            console.log('📍 [8] Icon seçildi:', icon_name);
 
             // TEST: Doğruluk 15 metrenin üzerindeyse, sadece soluk konum dairesini göster, işaretçiyi gizle
             const isLowAccuracy = this._accuracy > 15;
-            console.log('📍 [9] Accuracy kontrolü:', {
-                accuracy: this._accuracy,
-                isLowAccuracy: isLowAccuracy,
-                threshold: 15
-            });
 
             // Doğruluk dairesini her zaman güncelle - RADİKAL ÇÖZÜM
             if (this._circle) {
@@ -1257,27 +1062,22 @@
 
             // Konum marker'ını güncelle veya göster/gizle
             if (isLowAccuracy) {
-                // Accuracy > 5m ise marker'ı gizle (varsa)
-                console.log('📍 [10] Düşük accuracy - Marker GİZLENİYOR');
+                // Accuracy > 15m ise marker'ı gizle (varsa)
                 if (this._marker) {
                     this._map.removeLayer(this._marker);
                     this._marker = undefined;
                 }
             } else {
-                // Accuracy ≤ 5m ise marker'ı göster ve güncelle
-                console.log('📍 [11] İyi accuracy - Marker GÖSTERILIYOR/GÜNCELLENIYOR');
+                // Accuracy ≤ 15m ise marker'ı göster ve güncelle
                 if (this._marker && this._marker.icon_name === icon_name) {
-                    console.log('📍 [12] Mevcut marker güncelleniyor');
                     this._marker.setLatLng([this._latitude, this._longitude]);
                 } else {
-                    console.log('📍 [13] Yeni marker oluşturuluyor');
                     if (this._marker) this._map.removeLayer(this._marker);
                     this._marker = L.marker([this._latitude, this._longitude], {
                         icon: this.options[icon_name]
                     });
                     this._marker.icon_name = icon_name;
                     this._marker.addTo(this._map);
-                    console.log('📍 [14] Marker haritaya eklendi');
                 }
             }
 
@@ -1300,7 +1100,6 @@
                 path.style.strokeOpacity = '0.3';  // Daha soluk
                 path.setAttribute('stroke-opacity', '0.3');
                 
-                console.log('✅ Kesikli çizgi zorla uygulandı:', path.getAttribute('stroke-dasharray'));
             } else {
                 // Düz çizgi - normal siyah
                 path.style.strokeDasharray = '';
@@ -1310,7 +1109,6 @@
                 path.style.strokeOpacity = '0.8';  // Daha belirgin
                 path.setAttribute('stroke-opacity', '0.8');
                 
-                console.log('✅ Düz çizgi uygulandı');
             }
         },
         
@@ -1330,10 +1128,8 @@
                     
                     // Yanlış durumda ise düzelt
                     if (isLowAccuracy && (!currentDashArray || currentDashArray === '')) {
-                        console.warn('⚠️ DashArray kaybolmuş, yeniden uygulanıyor!');
                         this._forceCircleDashArray(true);
                     } else if (!isLowAccuracy && currentDashArray && currentDashArray !== '') {
-                        console.warn('⚠️ DashArray olmaması gerekiyor, temizleniyor!');
                         this._forceCircleDashArray(false);
                     }
                 }
@@ -1366,10 +1162,6 @@
                 kf.P_lat = 1.0;
                 kf.P_lng = 1.0;
 
-                if (this.options.showFilterInfo) {
-                    console.log('Kalman Filter: İlk ölçüm, filtrelenmiş değer:', position.latitude, position.longitude);
-                }
-
                 return {
                     latitude: position.latitude,
                     longitude: position.longitude,
@@ -1396,10 +1188,6 @@
                         kf.x_lng = position.longitude;
                         kf.P_lat = 1.0;
                         kf.P_lng = 1.0;
-
-                        if (this.options.showFilterInfo) {
-                            console.log('Kalman Filter: iOS - Büyük sıçrama ve gecikme tespit edildi, filtrelenmiş değer:', position.latitude, position.longitude);
-                        }
 
                         return {
                             latitude: position.latitude,
@@ -1452,10 +1240,6 @@
 
                 kf.x_lat = blendFactor * position.latitude + (1 - blendFactor) * kf.x_lat;
                 kf.x_lng = blendFactor * position.longitude + (1 - blendFactor) * kf.x_lng;
-
-                if (this.options.showFilterInfo) {
-                    console.log('Kalman Filter: iOS - Filtrelenmiş konum çok uzakta, dinamik blend uygulandı:', Math.round(filteredDistance), 'm, blend:', blendFactor.toFixed(2));
-                }
             }
 
             return {
@@ -1505,10 +1289,6 @@
             // iOS için özel: Log analizine göre iOS'ta durağan halinde bile 0.3-2m/s hareket var
             // Daha yüksek eşik kullan
             const speedThreshold = this._isIOS ? 0.8 : 0.5; // iOS: 0.8 m/s, Android: 0.5 m/s
-            
-            if (this.options.showFilterInfo && this._isIOS) {
-                console.log(`iOS: Hareket tespiti - Hız: ${avgSpeed.toFixed(2)} m/s, Eşik: ${speedThreshold} m/s`);
-            }
 
             return avgSpeed > speedThreshold;
         },

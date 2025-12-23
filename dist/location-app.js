@@ -261,22 +261,6 @@ function createWeiYeInfoControl() {
 // 9. Wei Ye kontrol panelini oluştur
 const weiYeInfoControl = createWeiYeInfoControl();
 
-// 9.5. Location Logger oluştur - Basitleştirilmiş başlatma
-let locationLogger = null;
-
-// LocationLogger'ı başlat (window.load'da otomatik başlatılacak)
-window.addEventListener('load', () => {
-    if (typeof LocationLogger !== 'undefined') {
-        locationLogger = new LocationLogger({
-            maxLogs: 10000,
-            jumpThreshold: 10
-        });
-        console.log('✅ Location Logger başlatıldı');
-    } else {
-        console.warn('⚠️ LocationLogger sınıfı yüklenemedi');
-    }
-});
-
 // 10. SimpleLocate kontrolü
 const control = new L.Control.SimpleLocate({
     position: "topleft",
@@ -310,19 +294,6 @@ const control = new L.Control.SimpleLocate({
                         control._weiYeState?.filteringStats.totalUpdates < 3,
                 });
 
-                // Location Logger'a log ekle
-                if (locationLogger) {
-                    locationLogger.logLocation({
-                        lat: lat,
-                        lng: lng,
-                        accuracy: location.accuracy,
-                        altitude: altitude,
-                        angle: location.angle,
-                        isJump: location.isJump,
-                        isFiltered: location.isFiltered
-                    });
-                }
-
                 onUserLocationUpdate(lat, lng, altitude);
             },
             () => {
@@ -334,19 +305,6 @@ const control = new L.Control.SimpleLocate({
                         control._weiYeState?.filteringStats.totalUpdates < 3,
                 });
                 
-                // Location Logger'a log ekle (altitude olmadan)
-                if (locationLogger) {
-                    locationLogger.logLocation({
-                        lat: location.lat,
-                        lng: location.lng,
-                        accuracy: location.accuracy,
-                        altitude: NaN,
-                        angle: location.angle,
-                        isJump: location.isJump,
-                        isFiltered: location.isFiltered
-                    });
-                }
-                
                 // Altitude alınamazsa da konumu güncelle (altitude NaN)
                 onUserLocationUpdate(location.lat, location.lng, NaN);
             }
@@ -354,11 +312,6 @@ const control = new L.Control.SimpleLocate({
     },
 
     afterClick: (status) => {
-        // Konum başlatıldığında loglamayı başlat
-        if (status.geolocation && locationLogger) {
-            locationLogger.startLogging();
-        }
-        
         if (!status.geolocation) {
             L.popup()
                 .setLatLng(map.getCenter())
