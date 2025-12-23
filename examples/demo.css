@@ -115,6 +115,7 @@
     stroke: rgba(var(--primary-rgb), 1);
     stroke-width: 1;
     stroke-opacity: .3;
+    stroke-dasharray: none !important;  /* Normal durumda düz çizgi */
     pointer-events: none !important;
     cursor: grab;
 }
@@ -131,8 +132,7 @@
 /* Düşük doğruluk dairesi (accuracy > 5m) - Kesikli çizgi ile belirgin */
 .leaflet-simple-locate-circle-low-accuracy {
     stroke-width: 2px !important;
-    stroke-dasharray: 8, 5 !important;
-    /* Belirgin kesikli çizgi */
+    stroke-dasharray: 8 5 !important;  /* Belirgin kesikli çizgi - virgül yerine boşluk */
 }
 
 /* Düşük doğruluk uyarı mesajı için stil */

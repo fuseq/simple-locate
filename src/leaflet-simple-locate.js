@@ -1184,6 +1184,10 @@
                         dashArray: '8, 5',         // Belirgin kesikli çizgi
                         className: 'leaflet-simple-locate-circle leaflet-simple-locate-circle-low-accuracy'
                     });
+                    // SVG path elementine direkt erişip dashArray'i zorla
+                    if (this._circle._path) {
+                        this._circle._path.setAttribute('stroke-dasharray', '8, 5');
+                    }
                 } else {
                     // Yüksek doğrulukta düz çizgi (accuracy ≤ 5m)
                     this._circle.setStyle({
@@ -1195,6 +1199,10 @@
                         dashArray: null,           // Düz çizgi
                         className: 'leaflet-simple-locate-circle'
                     });
+                    // Düz çizgi için dashArray'i kaldır
+                    if (this._circle._path) {
+                        this._circle._path.removeAttribute('stroke-dasharray');
+                    }
                 }
 
                 // Sıçrama tespit edildiyse ve doğruluk düşük değilse visual feedback
@@ -1230,6 +1238,11 @@
                     weight: isLowAccuracy ? 2 : 1,
                     dashArray: isLowAccuracy ? '8, 5' : null
                 }).addTo(this._map);
+                
+                // SVG path elementine direkt erişip dashArray'i zorla (düşük accuracy durumunda)
+                if (isLowAccuracy && this._circle._path) {
+                    this._circle._path.setAttribute('stroke-dasharray', '8, 5');
+                }
             }
 
             // Konum marker'ını güncelle veya göster/gizle
