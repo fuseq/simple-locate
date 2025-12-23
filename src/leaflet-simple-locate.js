@@ -149,6 +149,7 @@
             this._button = undefined;
             this._marker = undefined;
             this._circle = undefined;
+            this._circleStyleInterval = undefined; // RADİKAL: Sürekli stil kontrolü için
 
             // button state
             this._clicked = undefined;
@@ -971,6 +972,10 @@
 
         _unwatchGeolocation: function () {
             console.log("🛑 Geolocation takibi durduruluyor...");
+            
+            // RADİKAL: Stil kontrolünü durdur
+            this._stopCircleStyleWatcher();
+            
             this._map.stopLocate();
             this._map.off("locationfound", this._onLocationFound, this);
             this._map.off("locationerror", this._onLocationError, this);
@@ -1165,7 +1170,7 @@
                 threshold: 5
             });
 
-            // Doğruluk dairesini her zaman güncelle
+            // Doğruluk dairesini her zaman güncelle - RADİKAL ÇÖZÜM
             if (this._circle) {
                 this._circle.setLatLng([this._latitude, this._longitude]);
                 this._circle.setRadius(this._accuracy);
@@ -1176,51 +1181,48 @@
                 // Düşük doğrulukta kesikli çizgi (accuracy > 5m)
                 if (isLowAccuracy) {
                     this._circle.setStyle({
-                        fillColor: accuracyColor,  // Normal renk
-                        color: accuracyColor,      // Normal renk
-                        fillOpacity: 0.15,         // Normal seviye
-                        opacity: 0.5,              // Normal seviye
-                        weight: 2,                 // Biraz daha kalın
-                        dashArray: '8, 5',         // Belirgin kesikli çizgi
-                        className: 'leaflet-simple-locate-circle leaflet-simple-locate-circle-low-accuracy'
+                        fillColor: accuracyColor,
+                        color: accuracyColor,
+                        fillOpacity: 0.1,   // Daha soluk fill
+                        opacity: 0.3,       // Daha soluk stroke
+                        weight: 2,
+                        dashArray: '10 6'
                     });
-                    // SVG path elementine direkt erişip dashArray'i zorla
-                    if (this._circle._path) {
-                        this._circle._path.setAttribute('stroke-dasharray', '8, 5');
-                    }
+                    
+                    // RADİKAL: Her update'te dashArray'i zorla uygula
+                    this._forceCircleDashArray(isLowAccuracy);
                 } else {
                     // Yüksek doğrulukta düz çizgi (accuracy ≤ 5m)
                     this._circle.setStyle({
                         fillColor: accuracyColor,
                         color: accuracyColor,
                         fillOpacity: 0.2,
-                        opacity: 0.5,
+                        opacity: 0.8,       // Daha belirgin stroke
                         weight: 1,
-                        dashArray: null,           // Düz çizgi
-                        className: 'leaflet-simple-locate-circle'
+                        dashArray: ''
                     });
-                    // Düz çizgi için dashArray'i kaldır
-                    if (this._circle._path) {
-                        this._circle._path.removeAttribute('stroke-dasharray');
-                    }
+                    
+                    // RADİKAL: Düz çizgi için dashArray'i temizle
+                    this._forceCircleDashArray(false);
                 }
 
                 // Sıçrama tespit edildiyse ve doğruluk düşük değilse visual feedback
                 if (this._weiYeState.isJumpDetected && !isLowAccuracy) {
                     this._circle.setStyle({
-                        dashArray: "5, 5",
+                        dashArray: "8 4",
                         fillOpacity: 0.3,
-                        opacity: 0.8
+                        opacity: 0.9
                     });
 
                     // Birkaç saniye sonra normale döndür
                     setTimeout(() => {
                         if (this._circle) {
                             this._circle.setStyle({
-                                dashArray: isLowAccuracy ? "5, 5" : null,
+                                dashArray: isLowAccuracy ? "10 6" : "",
                                 fillOpacity: isLowAccuracy ? 0.15 : 0.2,
-                                opacity: isLowAccuracy ? 0.6 : 0.5
+                                opacity: isLowAccuracy ? 0.8 : 0.5
                             });
+                            this._forceCircleDashArray(isLowAccuracy);
                         }
                     }, 2000);
                 }
@@ -1229,20 +1231,28 @@
                 // İlk kez daire oluşturma
                 const accuracyColor = this._getAccuracyColor(this._accuracy);
                 this._circle = L.circle([this._latitude, this._longitude], {
-                    className: isLowAccuracy ? 'leaflet-simple-locate-circle leaflet-simple-locate-circle-low-accuracy' : 'leaflet-simple-locate-circle',
                     radius: this._accuracy,
                     fillColor: accuracyColor,
                     color: accuracyColor,
-                    fillOpacity: isLowAccuracy ? 0.15 : 0.2,
-                    opacity: 0.5,
+                    fillOpacity: isLowAccuracy ? 0.1 : 0.2,   // Kesikli daha soluk fill
+                    opacity: isLowAccuracy ? 0.3 : 0.8,       // Kesikli soluk, düz belirgin
                     weight: isLowAccuracy ? 2 : 1,
-                    dashArray: isLowAccuracy ? '8, 5' : null
+                    dashArray: isLowAccuracy ? '10 6' : ''
                 }).addTo(this._map);
                 
-                // SVG path elementine direkt erişip dashArray'i zorla (düşük accuracy durumunda)
-                if (isLowAccuracy && this._circle._path) {
-                    this._circle._path.setAttribute('stroke-dasharray', '8, 5');
-                }
+                // RADİKAL: Circle eklendikten hemen sonra dashArray'i zorla
+                setTimeout(() => {
+                    this._forceCircleDashArray(isLowAccuracy);
+                    // RADİKAL: Sürekli kontrol eden mekanizmayı başlat
+                    this._startCircleStyleWatcher();
+                }, 10);
+                
+                // RADİKAL: Harita her hareket ettiğinde veya zoom değiştiğinde yeniden uygula
+                this._map.on('moveend zoomend', () => {
+                    if (this._circle && this._accuracy > 5) {
+                        this._forceCircleDashArray(true);
+                    }
+                });
             }
 
             // Konum marker'ını güncelle veya göster/gizle
@@ -1275,32 +1285,73 @@
             this._lastAccuracy = this._accuracy;
         },
 
-        // Doğruluk değerine göre renk döndür
-        // iOS için özel: Log analizine göre iOS'ta accuracy değerleri daha yüksek
-        _getAccuracyColor: function (accuracy) {
-            if (this._isIOS) {
-                // iOS için daha toleranslı eşikler
-                if (accuracy <= 10) {
-                    return '#4CAF50'; // İyi doğruluk - Yeşil
-                } else if (accuracy <= 25) {
-                    return '#FFC107'; // Orta doğruluk - Sarı
-                } else if (accuracy <= 40) {
-                    return '#FF9800'; // Düşük doğruluk - Turuncu
-                } else {
-                    return '#F44336'; // Çok düşük doğruluk - Kırmızı
-                }
+        // RADİKAL: Circle'a kesikli çizgiyi zorla uygula
+        _forceCircleDashArray: function(isDashed) {
+            if (!this._circle || !this._circle._path) return;
+            
+            const path = this._circle._path;
+            
+            if (isDashed) {
+                // Kesikli çizgi - soluk siyah
+                path.style.strokeDasharray = '10, 6';
+                path.setAttribute('stroke-dasharray', '10, 6');
+                path.style.strokeWidth = '2';
+                path.setAttribute('stroke-width', '2');
+                path.style.strokeOpacity = '0.3';  // Daha soluk
+                path.setAttribute('stroke-opacity', '0.3');
+                
+                console.log('✅ Kesikli çizgi zorla uygulandı:', path.getAttribute('stroke-dasharray'));
             } else {
-                // Android için normal eşikler
-                if (accuracy <= 5) {
-                    return '#4CAF50'; // İyi doğruluk - Yeşil
-                } else if (accuracy <= 15) {
-                    return '#FFC107'; // Orta doğruluk - Sarı
-                } else if (accuracy <= 30) {
-                    return '#FF9800'; // Düşük doğruluk - Turuncu
-                } else {
-                    return '#F44336'; // Çok düşük doğruluk - Kırmızı
-                }
+                // Düz çizgi - normal siyah
+                path.style.strokeDasharray = '';
+                path.setAttribute('stroke-dasharray', '');
+                path.style.strokeWidth = '1';
+                path.setAttribute('stroke-width', '1');
+                path.style.strokeOpacity = '0.8';  // Daha belirgin
+                path.setAttribute('stroke-opacity', '0.8');
+                
+                console.log('✅ Düz çizgi uygulandı');
             }
+        },
+        
+        // RADİKAL: Sürekli stil kontrolü başlat
+        _startCircleStyleWatcher: function() {
+            // Eski interval varsa temizle
+            if (this._circleStyleInterval) {
+                clearInterval(this._circleStyleInterval);
+            }
+            
+            // Her 100ms'de bir kontrol et ve gerekirse düzelt
+            this._circleStyleInterval = setInterval(() => {
+                if (this._circle && this._circle._path && this._accuracy) {
+                    const isLowAccuracy = this._accuracy > 5;
+                    const path = this._circle._path;
+                    const currentDashArray = path.getAttribute('stroke-dasharray');
+                    
+                    // Yanlış durumda ise düzelt
+                    if (isLowAccuracy && (!currentDashArray || currentDashArray === '')) {
+                        console.warn('⚠️ DashArray kaybolmuş, yeniden uygulanıyor!');
+                        this._forceCircleDashArray(true);
+                    } else if (!isLowAccuracy && currentDashArray && currentDashArray !== '') {
+                        console.warn('⚠️ DashArray olmaması gerekiyor, temizleniyor!');
+                        this._forceCircleDashArray(false);
+                    }
+                }
+            }, 100);
+        },
+        
+        // RADİKAL: Stil kontrolünü durdur
+        _stopCircleStyleWatcher: function() {
+            if (this._circleStyleInterval) {
+                clearInterval(this._circleStyleInterval);
+                this._circleStyleInterval = undefined;
+            }
+        },
+
+        // Doğruluk değerine göre renk döndür
+        // Kullanıcı talebi: Her zaman siyah
+        _getAccuracyColor: function (accuracy) {
+            return '#000000'; // Her zaman siyah
         },
 
         // Kalman filtresini uygula

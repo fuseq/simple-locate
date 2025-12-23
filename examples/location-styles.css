@@ -30,3 +30,32 @@ html,
     font-weight: bold;
     color: #333;
 }
+
+/* RADİKAL: Accuracy circle kesikli çizgi stili - accuracy > 5m için */
+/* Tüm olası SVG path seçicilerini hedefle */
+.leaflet-simple-locate-circle-low-accuracy,
+.leaflet-simple-locate-circle-low-accuracy path,
+path.leaflet-simple-locate-circle-low-accuracy,
+svg path[stroke-dasharray="10, 6"] {
+    stroke-dasharray: 10, 6 !important;
+    stroke-width: 2 !important;
+    stroke-opacity: 0.3 !important;  /* Soluk siyah */
+    fill-opacity: 0.1 !important;     /* Soluk fill */
+}
+
+/* Yüksek accuracy için normal çizgi */
+.leaflet-simple-locate-circle:not(.leaflet-simple-locate-circle-low-accuracy) path {
+    stroke-dasharray: none !important;
+    stroke-width: 1 !important;
+    stroke-opacity: 0.8 !important;  /* Belirgin siyah */
+    fill-opacity: 0.2 !important;
+}
+
+/* RADİKAL: Leaflet'in SVG çizimlerini override et */
+.leaflet-overlay-pane svg path[stroke-dasharray="10, 6"] {
+    stroke-dasharray: 10, 6 !important;
+}
+
+.leaflet-overlay-pane svg g path[stroke-dasharray="10, 6"] {
+    stroke-dasharray: 10, 6 !important;
+}
