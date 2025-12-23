@@ -60,8 +60,6 @@ class LocationLogger {
         document.body.appendChild(buttonContainer);
         this.logButton = document.getElementById('locationLoggerButton');
         this.logCountBadge = document.getElementById('logCountBadge');
-        
-        console.log('Location Logger UI oluşturuldu', this.logButton);
 
         
         let bottomSheet = document.getElementById('locationLoggerBottomSheet');
@@ -114,8 +112,6 @@ class LocationLogger {
         }
         this.bottomSheet = bottomSheet;
         this.logContainer = document.getElementById('logContainer');
-        
-        console.log('Location Logger Bottom Sheet oluşturuldu', this.bottomSheet);
     }
 
   
@@ -128,7 +124,6 @@ class LocationLogger {
 
         
         this.logButton.addEventListener('click', () => {
-            console.log('Location Logger butonu tıklandı');
             this.toggleBottomSheet();
         });
 
@@ -311,9 +306,6 @@ class LocationLogger {
         // Referansı güncelle
         this.logContainer = logContainer;
 
-        // Debug için log sayısını kontrol et
-        console.log('updateLogList çağrıldı, log sayısı:', this.logs.length);
-
         if (!this.logs || this.logs.length === 0) {
             this.logContainer.innerHTML = '<div class="location-logger-empty">Henüz log kaydı yok</div>';
             return;
@@ -326,7 +318,6 @@ class LocationLogger {
             .map(log => this.createLogItemHTML(log))
             .join('');
         
-        console.log('Log HTML oluşturuldu, uzunluk:', logHTML.length);
         this.logContainer.innerHTML = logHTML;
 
         // En üste scroll et (çünkü en yeni loglar üstte)
@@ -432,13 +423,11 @@ class LocationLogger {
 
   
     openBottomSheet() {
-        console.log('openBottomSheet çağrıldı, log sayısı:', this.logs.length);
         this.bottomSheet.classList.add('active');
         document.body.style.overflow = 'hidden';
         
         // Container'ı her açıldığında yeniden al
         this.logContainer = document.getElementById('logContainer');
-        console.log('logContainer bulundu:', !!this.logContainer);
         
         // Hem hemen hem de bir tick sonra çağır (rendering sorunları için)
         this.updateLogList();

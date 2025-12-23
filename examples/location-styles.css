@@ -1,3 +1,4 @@
+/* Body ve Map temel stilleri */
 body,
 html,
 #map {
@@ -5,17 +6,6 @@ html,
     padding: 0;
     height: 100vh;
     width: 100vw;
-}
-
-.leaflet-control-wei-ye-info {
-    background: white;
-    padding: 10px 12px;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    min-width: 180px;
-    line-height: 1.3;
 }
 
 .accuracy-value.accuracy-good {
@@ -34,41 +24,9 @@ html,
     color: #f44336;
 }
 
+/* Doğruluk renklerinin kullanıldığı yerler için yardımcı sınıflar */
 .door-info {
     margin-top: 8px;
     font-weight: bold;
     color: #333;
-}
-
-/* Wei Ye Jump Warning */
-.wei-ye-jump-warning {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: rgba(255, 87, 34, 0.9);
-    color: white;
-    padding: 10px 15px;
-    border-radius: 4px;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    z-index: 1000;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-}
-
-/* Pulsating Circle for Low Accuracy */
-.leaflet-simple-locate-circle-low-accuracy {
-    animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-    0% {
-        opacity: 0.6;
-    }
-    50% {
-        opacity: 0.2;
-    }
-    100% {
-        opacity: 0.6;
-    }
 }

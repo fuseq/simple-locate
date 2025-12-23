@@ -7,36 +7,45 @@ const map = new L.Map("map", {
     zoomControl: false,
 });
 
-// Google Maps Layers
-// Kullanılabilir tipler: 'roadmap', 'satellite', 'terrain', 'hybrid'
-const googleStreets = L.gridLayer.googleMutant({
-    type: 'roadmap', // Yol haritası
-}).addTo(map); // Varsayılan olarak Streets göster
+// Google Maps Layers - API key kontrolü ile
+let baseMaps = {};
 
-const googleSatellite = L.gridLayer.googleMutant({
-    type: 'satellite', // Uydu görünümü
-});
+// Google Maps API key kontrolü
+if (typeof window.google !== 'undefined' && window.google.maps) {
+    const googleStreets = L.gridLayer.googleMutant({
+        type: 'roadmap',
+    }).addTo(map);
 
-const googleHybrid = L.gridLayer.googleMutant({
-    type: 'hybrid', // Uydu + Yollar
-});
+    const googleSatellite = L.gridLayer.googleMutant({
+        type: 'satellite',
+    });
 
-const googleTerrain = L.gridLayer.googleMutant({
-    type: 'terrain', // Arazi haritası
-});
+    const googleHybrid = L.gridLayer.googleMutant({
+        type: 'hybrid',
+    });
 
-// Layer Control - Harita türleri arasında geçiş için
-const baseMaps = {
-    "Google Streets": googleStreets,
-    "Google Satellite": googleSatellite,
-    "Google Hybrid": googleHybrid,
-    "Google Terrain": googleTerrain,
-};
+    const googleTerrain = L.gridLayer.googleMutant({
+        type: 'terrain',
+    });
 
-L.control.layers(baseMaps, null, {
-    position: 'bottomleft',
-    collapsed: true // Mobilde taşma olmaması için kapalı başlat
-}).addTo(map);
+    baseMaps = {
+        "Google Streets": googleStreets,
+        "Google Satellite": googleSatellite,
+        "Google Hybrid": googleHybrid,
+        "Google Terrain": googleTerrain,
+    };
+
+    L.control.layers(baseMaps, null, {
+        position: 'bottomleft',
+        collapsed: true
+    }).addTo(map);
+} else {
+    console.warn('Google Maps API yüklenmedi, OpenStreetMap kullanılıyor');
+    // OpenStreetMap fallback
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+}
 
 // 2. Kat bilgileri ve SVG kapı çizgileri değişkenleri
 let floorAltitudes = {};
@@ -86,8 +95,8 @@ fetch("floor-altitudes.json")
     .then((res) => res.json())
     .then((data) => {
         floorAltitudes = data;
-        console.log("Kat altitüdü verisi yüklendi:", floorAltitudes);
-    });
+    })
+    .catch((err) => console.error("Kat verisi yüklenemedi:", err));
 
 // 6. En yakın katı bulma
 function findClosestFloor(altitude) {
@@ -252,40 +261,19 @@ function createWeiYeInfoControl() {
 // 9. Wei Ye kontrol panelini oluştur
 const weiYeInfoControl = createWeiYeInfoControl();
 
-// 9.5. Location Logger oluştur
+// 9.5. Location Logger oluştur - Basitleştirilmiş başlatma
 let locationLogger = null;
 
-// LocationLogger'ı DOM hazır olduğunda başlat
-function initLocationLogger() {
+// LocationLogger'ı başlat (window.load'da otomatik başlatılacak)
+window.addEventListener('load', () => {
     if (typeof LocationLogger !== 'undefined') {
         locationLogger = new LocationLogger({
             maxLogs: 10000,
             jumpThreshold: 10
         });
-        console.log('Location Logger başlatıldı');
+        console.log('✅ Location Logger başlatıldı');
     } else {
-        console.warn('LocationLogger sınıfı bulunamadı, tekrar deneniyor...');
-        setTimeout(initLocationLogger, 100);
-    }
-}
-
-// DOMContentLoaded bekleyerek başlat
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-        console.log('DOMContentLoaded - Location Logger başlatılıyor...');
-        initLocationLogger();
-    });
-} else {
-    // DOM zaten hazır
-    console.log('DOM hazır - Location Logger başlatılıyor...');
-    initLocationLogger();
-}
-
-// Alternatif olarak window load event'inde de dene
-window.addEventListener('load', () => {
-    if (!locationLogger && typeof LocationLogger !== 'undefined') {
-        console.log('Window load - Location Logger başlatılıyor...');
-        initLocationLogger();
+        console.warn('⚠️ LocationLogger sınıfı yüklenemedi');
     }
 });
 
@@ -366,9 +354,6 @@ const control = new L.Control.SimpleLocate({
     },
 
     afterClick: (status) => {
-        console.log("Geolocation status:", status.geolocation);
-        console.log("Orientation status:", status.orientation);
-        
         // Konum başlatıldığında loglamayı başlat
         if (status.geolocation && locationLogger) {
             locationLogger.startLogging();
@@ -392,7 +377,6 @@ function onUserLocationUpdate(lat, lng, altitude) {
         currentFloorKey = floorKey;
         loadFloorDoors(currentFloorKey).then((lines) => {
             doorLinesLatLng = lines;
-            console.log("Yüklenen kapı çizgileri:", doorLinesLatLng);
         });
     }
 

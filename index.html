@@ -14,12 +14,18 @@
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
       crossorigin=""
     ></script>
-    <script src="dist/leaflet-simple-locate.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/low-pass-filter@1.0.0/dist/low-pass-filter.min.js"></script>
+    <script src="src/leaflet-simple-locate.js"></script>
     
-    <!-- Google Maps API -->
+    <!-- Google Maps API - UYARI: Kendi API key'inizi kullanın -->
+    <script>
+        // API key'inizi buraya ekleyin veya environment variable kullanın
+        const GOOGLE_MAPS_API_KEY = 'AIzaSyCmurfWEw-GKHOy1AiGvl61BovbpKdWAso'; // Buraya kendi key'inizi ekleyin
+        if (GOOGLE_MAPS_API_KEY === 'AIzaSyCmurfWEw-GKHOy1AiGvl61BovbpKdWAso') {
+            console.warn('⚠️ Google Maps API key ayarlanmamış! location-app.js içinde Google Maps katmanları devre dışı bırakıldı.');
+        }
+    </script>
     <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCmurfWEw-GKHOy1AiGvl61BovbpKdWAso"></script>
-    <!-- Leaflet.GridLayer.GoogleMutant Plugin -->
     <script src="https://unpkg.com/leaflet.gridlayer.googlemutant@latest/dist/Leaflet.GoogleMutant.js"></script>
 
     <link rel="stylesheet" href="examples/demo.css" />
@@ -267,8 +273,18 @@
 
       @media (max-width: 768px) {
         .filter-panel {
-          width: 200px;
+          width: 180px;
+          font-size: 11px;
+          top: 60px;
+          right: 5px;
+        }
+        
+        .panel-title {
           font-size: 12px;
+        }
+        
+        .filter-group label {
+          font-size: 11px;
         }
 
         .modal-content {
@@ -280,7 +296,7 @@
         .leaflet-control-layers {
           max-height: 50vh !important;
           overflow-y: auto !important;
-          margin-bottom: 80px !important; /* Mobilde daha yukarı */
+          margin-bottom: 80px !important;
         }
         
         .leaflet-control-layers-expanded {
@@ -291,6 +307,12 @@
         .leaflet-bottom.leaflet-left {
           margin-bottom: 10px;
           margin-left: 10px;
+        }
+        
+        /* Mobilde filtreleme panelini daha küçük yap */
+        .filter-panel:not(.collapsed) {
+          max-height: 60vh;
+          overflow-y: auto;
         }
       }
 

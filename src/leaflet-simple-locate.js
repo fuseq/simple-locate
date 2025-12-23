@@ -1076,8 +1076,8 @@
             else if (this._geolocation) icon_name = "iconGeolocation";
             else return;
 
-            // Doğruluk çok düşükse (>50m), sadece olası konum dairesini göster, işaretçiyi gizle
-            const isLowAccuracy = this._accuracy > 50;
+            // Doğruluk 5 metrenin üzerindeyse, sadece soluk konum dairesini göster, işaretçiyi gizle
+            const isLowAccuracy = this._accuracy > 5;
 
             // Doğruluk dairesini her zaman güncelle
             if (this._circle) {
@@ -1087,19 +1087,19 @@
                 // Doğruluk düzeyine göre dairenin stilini ayarla
                 const accuracyColor = this._getAccuracyColor(this._accuracy);
 
-                // Çok düşük doğrulukta daha vurgulu stil
+                // Düşük doğrulukta soluk stil (accuracy > 5m)
                 if (isLowAccuracy) {
                     this._circle.setStyle({
-                        fillColor: '#F44336',  // Kırmızı
-                        color: '#F44336',
-                        fillOpacity: 0.15,
-                        opacity: 0.6,
-                        weight: 2,
-                        dashArray: '5, 5',
-                        // Pulsating efekti için bir sınıf ekle
+                        fillColor: '#9E9E9E',  // Gri
+                        color: '#9E9E9E',
+                        fillOpacity: 0.1,      // Çok soluk
+                        opacity: 0.3,          // Çok soluk
+                        weight: 1,
+                        dashArray: '3, 3',
                         className: 'leaflet-simple-locate-circle leaflet-simple-locate-circle-low-accuracy'
                     });
                 } else {
+                    // Yüksek doğrulukta normal stil (accuracy ≤ 5m)
                     this._circle.setStyle({
                         fillColor: accuracyColor,
                         color: accuracyColor,
@@ -1107,7 +1107,6 @@
                         opacity: 0.5,
                         weight: 1,
                         dashArray: null,
-                        // Normal stil için sınıfı güncelle
                         className: 'leaflet-simple-locate-circle'
                     });
                 }
@@ -1137,24 +1136,24 @@
                 this._circle = L.circle([this._latitude, this._longitude], {
                     className: isLowAccuracy ? 'leaflet-simple-locate-circle leaflet-simple-locate-circle-low-accuracy' : 'leaflet-simple-locate-circle',
                     radius: this._accuracy,
-                    fillColor: isLowAccuracy ? '#F44336' : this._getAccuracyColor(this._accuracy),
-                    color: isLowAccuracy ? '#F44336' : this._getAccuracyColor(this._accuracy),
-                    fillOpacity: isLowAccuracy ? 0.15 : 0.2,
-                    opacity: isLowAccuracy ? 0.6 : 0.5,
-                    weight: isLowAccuracy ? 2 : 1,
-                    dashArray: isLowAccuracy ? '5, 5' : null
+                    fillColor: isLowAccuracy ? '#9E9E9E' : this._getAccuracyColor(this._accuracy),
+                    color: isLowAccuracy ? '#9E9E9E' : this._getAccuracyColor(this._accuracy),
+                    fillOpacity: isLowAccuracy ? 0.1 : 0.2,
+                    opacity: isLowAccuracy ? 0.3 : 0.5,
+                    weight: 1,
+                    dashArray: isLowAccuracy ? '3, 3' : null
                 }).addTo(this._map);
             }
 
             // Konum marker'ını güncelle veya göster/gizle
             if (isLowAccuracy) {
-                // Çok düşük doğrulukta, marker'ı gizle (varsa)
+                // Accuracy > 5m ise marker'ı gizle (varsa)
                 if (this._marker) {
                     this._map.removeLayer(this._marker);
                     this._marker = undefined;
                 }
             } else {
-                // Normal doğrulukta, marker'ı göster ve güncelle
+                // Accuracy ≤ 5m ise marker'ı göster ve güncelle
                 if (this._marker && this._marker.icon_name === icon_name) {
                     this._marker.setLatLng([this._latitude, this._longitude]);
                 } else {
