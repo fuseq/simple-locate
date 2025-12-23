@@ -128,20 +128,12 @@
     cursor: pointer;
 }
 
-/* Düşük doğruluk dairesi (accuracy > 5m) - Soluk ve minimal stil */
+/* Düşük doğruluk dairesi (accuracy > 5m) - Kesikli çizgi ile belirgin */
 .leaflet-simple-locate-circle-low-accuracy {
-    stroke: #9E9E9E !important;
-    /* Gri kenar */
-    fill: rgba(158, 158, 158, 0.05) !important;
-    /* Çok soluk gri dolgu */
-    stroke-width: 1px !important;
-    stroke-dasharray: 3, 3 !important;
-    /* İnce kesikli çizgi */
-    opacity: 0.4 !important;
-    /* Genel opaklık düşük */
+    stroke-width: 2px !important;
+    stroke-dasharray: 8, 5 !important;
+    /* Belirgin kesikli çizgi */
 }
-
-/* Animasyon kaldırıldı - sadece soluk statik görünüm */
 
 /* Düşük doğruluk uyarı mesajı için stil */
 .accuracy-warning {

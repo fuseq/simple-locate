@@ -1173,26 +1173,26 @@
                 // Doğruluk düzeyine göre dairenin stilini ayarla
                 const accuracyColor = this._getAccuracyColor(this._accuracy);
 
-                // Düşük doğrulukta soluk stil (accuracy > 5m)
+                // Düşük doğrulukta kesikli çizgi (accuracy > 5m)
                 if (isLowAccuracy) {
                     this._circle.setStyle({
-                        fillColor: '#9E9E9E',  // Gri
-                        color: '#9E9E9E',
-                        fillOpacity: 0.1,      // Çok soluk
-                        opacity: 0.3,          // Çok soluk
-                        weight: 1,
-                        dashArray: '3, 3',
+                        fillColor: accuracyColor,  // Normal renk
+                        color: accuracyColor,      // Normal renk
+                        fillOpacity: 0.15,         // Normal seviye
+                        opacity: 0.5,              // Normal seviye
+                        weight: 2,                 // Biraz daha kalın
+                        dashArray: '8, 5',         // Belirgin kesikli çizgi
                         className: 'leaflet-simple-locate-circle leaflet-simple-locate-circle-low-accuracy'
                     });
                 } else {
-                    // Yüksek doğrulukta normal stil (accuracy ≤ 5m)
+                    // Yüksek doğrulukta düz çizgi (accuracy ≤ 5m)
                     this._circle.setStyle({
                         fillColor: accuracyColor,
                         color: accuracyColor,
                         fillOpacity: 0.2,
                         opacity: 0.5,
                         weight: 1,
-                        dashArray: null,
+                        dashArray: null,           // Düz çizgi
                         className: 'leaflet-simple-locate-circle'
                     });
                 }
@@ -1219,15 +1219,16 @@
 
             } else if (this.options.drawCircle) {
                 // İlk kez daire oluşturma
+                const accuracyColor = this._getAccuracyColor(this._accuracy);
                 this._circle = L.circle([this._latitude, this._longitude], {
                     className: isLowAccuracy ? 'leaflet-simple-locate-circle leaflet-simple-locate-circle-low-accuracy' : 'leaflet-simple-locate-circle',
                     radius: this._accuracy,
-                    fillColor: isLowAccuracy ? '#9E9E9E' : this._getAccuracyColor(this._accuracy),
-                    color: isLowAccuracy ? '#9E9E9E' : this._getAccuracyColor(this._accuracy),
-                    fillOpacity: isLowAccuracy ? 0.1 : 0.2,
-                    opacity: isLowAccuracy ? 0.3 : 0.5,
-                    weight: 1,
-                    dashArray: isLowAccuracy ? '3, 3' : null
+                    fillColor: accuracyColor,
+                    color: accuracyColor,
+                    fillOpacity: isLowAccuracy ? 0.15 : 0.2,
+                    opacity: 0.5,
+                    weight: isLowAccuracy ? 2 : 1,
+                    dashArray: isLowAccuracy ? '8, 5' : null
                 }).addTo(this._map);
             }
 
