@@ -155,3 +155,75 @@ svg path[stroke-dasharray="10, 6"] {
         text-align: center;
     }
 }
+
+/* ========== DİNAMİK GEOFENCE SEÇİCİ STİLLERİ ========== */
+
+/* Alan belirleme butonu */
+.leaflet-control-geofence-btn {
+    margin-top: 10px !important;
+}
+
+.geofence-select-btn:active {
+    transform: scale(0.95);
+}
+
+/* Köşe tooltip */
+.corner-tooltip {
+    background: #2196F3 !important;
+    border: none !important;
+    color: white !important;
+    font-weight: bold !important;
+    font-size: 11px !important;
+    padding: 4px 8px !important;
+    border-radius: 4px !important;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2) !important;
+}
+
+.corner-tooltip::before {
+    border-top-color: #2196F3 !important;
+}
+
+/* Geofence mesajı animasyonu */
+#geofence-message {
+    animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -20px);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+}
+
+/* Sıfırlama butonu hover */
+#geofence-reset-btn:hover {
+    background: #F57C00 !important;
+    transform: translateX(-50%) scale(1.02);
+}
+
+#geofence-reset-btn:active {
+    transform: translateX(-50%) scale(0.98);
+}
+
+/* Mobil uyumluluk */
+@media screen and (max-width: 640px) {
+    .geofence-select-btn {
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+    }
+    
+    #geofence-message {
+        font-size: 12px !important;
+        padding: 10px 16px !important;
+        max-width: 90%;
+    }
+    
+    #geofence-reset-btn {
+        font-size: 12px !important;
+        padding: 8px 16px !important;
+    }
+}

@@ -1,5 +1,274 @@
 "use strict";
 
+// ========== DİNAMİK GEOFENCE SEÇİCİ ==========
+const GeofenceSelector = {
+    isActive: false,
+    corners: [],
+    markers: [],
+    polygon: null,
+    maxCorners: 4,
+    
+    // Seçiciyi başlat
+    start: function(map) {
+        this.isActive = true;
+        this.corners = [];
+        this.clearVisuals(map);
+        
+        // Harita cursor'unu değiştir
+        map.getContainer().style.cursor = 'crosshair';
+        
+        // Bilgi mesajı göster
+        this.showMessage('📍 Alan belirlemek için 4 köşeye tıklayın (1/4)');
+        
+        // Tıklama event'i ekle
+        map.on('click', this.onMapClick, this);
+    },
+    
+    // Haritaya tıklandığında
+    onMapClick: function(e) {
+        if (!this.isActive) return;
+        if (this.corners.length >= this.maxCorners) return;
+        
+        const latlng = e.latlng;
+        this.corners.push(latlng);
+        
+        // Marker ekle
+        const marker = L.circleMarker(latlng, {
+            radius: 8,
+            color: '#2196F3',
+            fillColor: '#2196F3',
+            fillOpacity: 0.8,
+            weight: 2
+        }).addTo(map);
+        
+        // Köşe numarasını göster
+        marker.bindTooltip(`Köşe ${this.corners.length}`, {
+            permanent: true,
+            direction: 'top',
+            className: 'corner-tooltip'
+        }).openTooltip();
+        
+        this.markers.push(marker);
+        
+        // Polygon güncelle
+        this.updatePolygon(map);
+        
+        // Mesaj güncelle
+        if (this.corners.length < this.maxCorners) {
+            this.showMessage(`📍 Alan belirlemek için ${this.maxCorners - this.corners.length} köşe daha seçin (${this.corners.length}/${this.maxCorners})`);
+        } else {
+            this.finish(map);
+        }
+    },
+    
+    // Polygon'u güncelle
+    updatePolygon: function(map) {
+        if (this.polygon) {
+            map.removeLayer(this.polygon);
+        }
+        
+        if (this.corners.length >= 2) {
+            // Köşeleri sıralı hale getir (saat yönünde)
+            const sortedCorners = this.sortCorners(this.corners);
+            
+            this.polygon = L.polygon(sortedCorners, {
+                color: '#2196F3',
+                fillColor: '#2196F3',
+                fillOpacity: 0.2,
+                weight: 2,
+                dashArray: '5, 5'
+            }).addTo(map);
+        }
+    },
+    
+    // Köşeleri saat yönünde sırala
+    sortCorners: function(corners) {
+        if (corners.length < 3) return corners;
+        
+        // Merkez noktayı bul
+        const centerLat = corners.reduce((sum, c) => sum + c.lat, 0) / corners.length;
+        const centerLng = corners.reduce((sum, c) => sum + c.lng, 0) / corners.length;
+        
+        // Açıya göre sırala
+        return [...corners].sort((a, b) => {
+            const angleA = Math.atan2(a.lat - centerLat, a.lng - centerLng);
+            const angleB = Math.atan2(b.lat - centerLat, b.lng - centerLng);
+            return angleA - angleB;
+        });
+    },
+    
+    // Seçimi tamamla
+    finish: function(map) {
+        this.isActive = false;
+        map.getContainer().style.cursor = '';
+        map.off('click', this.onMapClick, this);
+        
+        // Bounds hesapla
+        const bounds = this.calculateBounds();
+        
+        // BUILDING_CONFIG'i güncelle
+        BUILDING_CONFIG.bounds = bounds.array;
+        BUILDING_CONFIG.center = bounds.center;
+        
+        // Control'ü güncelle (eğer varsa)
+        if (typeof control !== 'undefined' && control.setGeofence) {
+            control.setGeofence({
+                bounds: bounds.array,
+                center: bounds.center,
+                radius: bounds.radius
+            });
+        }
+        
+        // Polygon'u kalıcı yap (yeşil renk)
+        if (this.polygon) {
+            this.polygon.setStyle({
+                color: '#4CAF50',
+                fillColor: '#4CAF50',
+                fillOpacity: 0.15,
+                dashArray: ''
+            });
+        }
+        
+        // Marker'ları kaldır
+        this.markers.forEach(m => map.removeLayer(m));
+        this.markers = [];
+        
+        this.showMessage(`✅ Alan belirlendi! Artık konum butonuna basabilirsiniz.`, 'success');
+        
+        // Koordinatları konsola yazdır
+        console.log('📍 Geofence Koordinatları:', {
+            bounds: bounds.array,
+            center: bounds.center,
+            corners: this.corners.map(c => ({ lat: c.lat, lng: c.lng }))
+        });
+        
+        // Seçimi sıfırlama butonu göster
+        this.showResetButton(map);
+    },
+    
+    // Bounds hesapla
+    calculateBounds: function() {
+        const lats = this.corners.map(c => c.lat);
+        const lngs = this.corners.map(c => c.lng);
+        
+        const minLat = Math.min(...lats);
+        const maxLat = Math.max(...lats);
+        const minLng = Math.min(...lngs);
+        const maxLng = Math.max(...lngs);
+        
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLng = (minLng + maxLng) / 2;
+        
+        // Yarıçap hesapla (metre cinsinden, yaklaşık)
+        const latDiff = (maxLat - minLat) * 111000; // 1 derece ≈ 111km
+        const lngDiff = (maxLng - minLng) * 111000 * Math.cos(centerLat * Math.PI / 180);
+        const radius = Math.max(latDiff, lngDiff) / 2;
+        
+        return {
+            array: [[minLat, minLng], [maxLat, maxLng]],
+            center: [centerLat, centerLng],
+            radius: radius
+        };
+    },
+    
+    // Görselleri temizle
+    clearVisuals: function(map) {
+        this.markers.forEach(m => map.removeLayer(m));
+        this.markers = [];
+        if (this.polygon) {
+            map.removeLayer(this.polygon);
+            this.polygon = null;
+        }
+    },
+    
+    // Mesaj göster
+    showMessage: function(text, type = 'info') {
+        let msgEl = document.getElementById('geofence-message');
+        if (!msgEl) {
+            msgEl = document.createElement('div');
+            msgEl.id = 'geofence-message';
+            msgEl.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                padding: 12px 24px;
+                border-radius: 8px;
+                font-size: 14px;
+                font-weight: 500;
+                z-index: 10000;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                transition: all 0.3s ease;
+            `;
+            document.body.appendChild(msgEl);
+        }
+        
+        if (type === 'success') {
+            msgEl.style.backgroundColor = '#4CAF50';
+            msgEl.style.color = 'white';
+        } else {
+            msgEl.style.backgroundColor = '#2196F3';
+            msgEl.style.color = 'white';
+        }
+        
+        msgEl.textContent = text;
+        msgEl.style.display = 'block';
+        
+        // Success mesajı 3 saniye sonra kaybol
+        if (type === 'success') {
+            setTimeout(() => {
+                msgEl.style.display = 'none';
+            }, 3000);
+        }
+    },
+    
+    // Sıfırlama butonu göster
+    showResetButton: function(map) {
+        let resetBtn = document.getElementById('geofence-reset-btn');
+        if (!resetBtn) {
+            resetBtn = document.createElement('button');
+            resetBtn.id = 'geofence-reset-btn';
+            resetBtn.innerHTML = '🔄 Alanı Yeniden Belirle';
+            resetBtn.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                padding: 10px 20px;
+                border-radius: 8px;
+                border: none;
+                background: #FF9800;
+                color: white;
+                font-size: 14px;
+                font-weight: 500;
+                cursor: pointer;
+                z-index: 10000;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            `;
+            resetBtn.onclick = () => {
+                this.reset(map);
+            };
+            document.body.appendChild(resetBtn);
+        }
+        resetBtn.style.display = 'block';
+    },
+    
+    // Sıfırla
+    reset: function(map) {
+        this.corners = [];
+        this.clearVisuals(map);
+        
+        const resetBtn = document.getElementById('geofence-reset-btn');
+        if (resetBtn) resetBtn.style.display = 'none';
+        
+        const msgEl = document.getElementById('geofence-message');
+        if (msgEl) msgEl.style.display = 'none';
+        
+        // Yeniden başlat
+        this.start(map);
+    }
+};
+
 // ========== BİNA KONFİGÜRASYONU ==========
 const BUILDING_CONFIG = {
     // Bina köşe koordinatları (referans)
@@ -353,6 +622,54 @@ function createWeiYeInfoControl() {
 
 // 9. Wei Ye kontrol panelini oluştur
 const weiYeInfoControl = createWeiYeInfoControl();
+
+// 9.5 Alan Belirleme Butonu ekle
+function createGeofenceButton() {
+    const GeofenceButtonControl = L.Control.extend({
+        options: { position: 'topleft' },
+        
+        onAdd: function(map) {
+            const container = L.DomUtil.create('div', 'leaflet-control-geofence-btn');
+            
+            const button = L.DomUtil.create('button', 'geofence-select-btn', container);
+            button.innerHTML = '📐 Alan Belirle';
+            button.title = 'Haritada köşelere tıklayarak geofence alanı belirleyin';
+            button.style.cssText = `
+                padding: 8px 12px;
+                border-radius: 8px;
+                border: 2px solid #2196F3;
+                background: white;
+                color: #2196F3;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                transition: all 0.2s ease;
+            `;
+            
+            button.onmouseover = () => {
+                button.style.backgroundColor = '#2196F3';
+                button.style.color = 'white';
+            };
+            button.onmouseout = () => {
+                button.style.backgroundColor = 'white';
+                button.style.color = '#2196F3';
+            };
+            
+            L.DomEvent.disableClickPropagation(button);
+            L.DomEvent.on(button, 'click', function(e) {
+                L.DomEvent.stopPropagation(e);
+                GeofenceSelector.start(map);
+            });
+            
+            return container;
+        }
+    });
+    
+    return new GeofenceButtonControl().addTo(map);
+}
+
+createGeofenceButton();
 
 // 10. SimpleLocate kontrolü - İSTANBUL HAVALİMANI İÇİN OPTİMİZE EDİLDİ
 const control = new L.Control.SimpleLocate({
