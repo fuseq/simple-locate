@@ -635,10 +635,9 @@
                     }
                 }
                 
-                // Katı modda tamamen reddet
-                if (this.options.positionValidationStrict) {
-                    return this._weiYeState.lastFilteredPosition || position;
-                }
+                // Fallback yoksa veya katı modda - null döndür (marker güncellenmeyecek)
+                console.warn(`🚫 Konum reddedildi (accuracy) - marker güncellenmeyecek`);
+                return null;
             }
             
             // ========== ADIM 2: GEOFENCE KONTROLÜ ==========
@@ -657,10 +656,9 @@
                     }
                 }
                 
-                // Katı modda tamamen reddet
-                if (this.options.positionValidationStrict) {
-                    return this._weiYeState.lastFilteredPosition || position;
-                }
+                // Fallback yoksa - null döndür (marker güncellenmeyecek)
+                console.warn(`🚫 Konum reddedildi (geofence) - marker güncellenmeyecek`);
+                return null;
             }
             
             // ========== ADIM 3: HIZ KONTROLÜ ==========
@@ -683,10 +681,9 @@
                     }
                 }
                 
-                // Katı modda tamamen reddet
-                if (this.options.positionValidationStrict) {
-                    return this._weiYeState.lastFilteredPosition || position;
-                }
+                // Fallback yoksa - null döndür (marker güncellenmeyecek)
+                console.warn(`🚫 Konum reddedildi (speed) - marker güncellenmeyecek`);
+                return null;
             }
             
             // ========== ADIM 4: GÜVENİLİRLİK SKORU ==========
@@ -1287,7 +1284,31 @@
             // Wei Ye algoritması ile konumu filtrele
             const filteredPosition = this._applyWeiYeFilter(event);
             
-            if (!filteredPosition || !filteredPosition.latitude || !filteredPosition.longitude) {
+            // Konum reddedildiyse (null döndü) - marker'ı güncelleme!
+            if (!filteredPosition) {
+                console.log(`🚫 Reddedilen konum - marker güncellenmedi`);
+                // Sadece callback'i çağır (istatistikler için)
+                if (this.options.afterDeviceMove) {
+                    this.options.afterDeviceMove({
+                        lat: this._latitude,  // Son geçerli konum
+                        lng: this._longitude,
+                        accuracy: this._accuracy,
+                        angle: this._angle,
+                        isFiltered: true,
+                        isRejected: true,  // Reddedildi flag'i
+                        isJump: false,
+                        filterStats: this._weiYeState.filteringStats,
+                        confidence: 0,
+                        locationStats: this._locationStats,
+                        isFallback: false,
+                        isIndoorMode: this.options.indoorMode,
+                        consecutiveBadLocations: this._consecutiveBadLocations
+                    });
+                }
+                return;
+            }
+            
+            if (!filteredPosition.latitude || !filteredPosition.longitude) {
                 return;
             }
 

@@ -294,17 +294,31 @@ function createWeiYeInfoControl() {
                 accuracyEl.className = "accuracy-value accuracy-poor";
             }
 
+            // Reddedilen konum durumu (alan dışı)
+            if (stats.isRejected) {
+                this._container.style.border = "2px solid #F44336";
+                this._container.style.backgroundColor = "#FFEBEE";
+                filteredEl.textContent = "⛔ ALAN DIŞI";
+                filteredEl.style.color = "#F44336";
+                filteredEl.style.fontWeight = "bold";
+            }
             // Fallback kullanılıyorsa özel durum
-            if (stats.isFallback) {
+            else if (stats.isFallback) {
                 this._container.style.border = "2px solid #FF9800";
+                this._container.style.backgroundColor = "";
                 filteredEl.textContent = "Tahmini Konum";
                 filteredEl.style.color = "#FF9800";
+                filteredEl.style.fontWeight = "";
             } else if (stats.accuracy > 50) {
                 this._container.style.border = "2px solid #F44336";
+                this._container.style.backgroundColor = "";
                 filteredEl.textContent = "Belirsiz Konum";
                 filteredEl.style.color = "#F44336";
+                filteredEl.style.fontWeight = "";
             } else {
                 this._container.style.border = "";
+                this._container.style.backgroundColor = "";
+                filteredEl.style.fontWeight = "";
                 if (stats.isJump) {
                     filteredEl.textContent = "Sıçrama düzeltildi";
                     filteredEl.style.color = "#FF9800";
@@ -388,6 +402,22 @@ const control = new L.Control.SimpleLocate({
     positionValidationStrict: false, // false = kötü konumlarda fallback kullan, true = tamamen reddet
 
     afterDeviceMove: (location) => {
+        // Reddedilen konum ise sadece istatistikleri güncelle
+        if (location.isRejected) {
+            weiYeInfoControl.updateStats({
+                accuracy: location.accuracy || 0,
+                altitude: NaN,
+                isJump: false,
+                initializing: false,
+                confidence: 0,
+                locationStats: location.locationStats,
+                isFallback: false,
+                isIndoorMode: location.isIndoorMode,
+                isRejected: true,  // Reddedildi flag'i
+                consecutiveBadLocations: location.consecutiveBadLocations
+            });
+            return;  // Kapı bilgisi güncelleme - marker zaten güncellenmedi
+        }
 
         navigator.geolocation.getCurrentPosition(
             (pos) => {
@@ -403,11 +433,11 @@ const control = new L.Control.SimpleLocate({
                     isJump: location.isJump,
                     initializing:
                         control._weiYeState?.filteringStats.totalUpdates < 3,
-                    // ========== İÇ MEKAN İYİLEŞTİRMELERİ - YENİ BİLGİLER ==========
                     confidence: location.confidence,
                     locationStats: location.locationStats,
                     isFallback: location.isFallback,
                     isIndoorMode: location.isIndoorMode,
+                    isRejected: false,
                     consecutiveBadLocations: location.consecutiveBadLocations
                 });
 
@@ -420,11 +450,11 @@ const control = new L.Control.SimpleLocate({
                     isJump: location.isJump,
                     initializing:
                         control._weiYeState?.filteringStats.totalUpdates < 3,
-                    // ========== İÇ MEKAN İYİLEŞTİRMELERİ - YENİ BİLGİLER ==========
                     confidence: location.confidence,
                     locationStats: location.locationStats,
                     isFallback: location.isFallback,
                     isIndoorMode: location.isIndoorMode,
+                    isRejected: false,
                     consecutiveBadLocations: location.consecutiveBadLocations
                 });
                 
