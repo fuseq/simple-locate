@@ -124,6 +124,74 @@ const GeofenceSelector = {
                 polygon: polygonArray  // ÖNEMLİ: Polygon köşelerini gönder
             });
             console.log('✅ Geofence polygon control\'e aktarıldı');
+            
+            // ========== YENİ ALAN İÇİN MEVCUT KONUM KONTROLÜ ==========
+            // Mevcut marker konumunu yeni polygon ile kontrol et
+            if (control._latitude && control._longitude) {
+                const currentLat = control._latitude;
+                const currentLng = control._longitude;
+                
+                // Yeni polygon içinde mi kontrol et
+                const isInsideNewArea = control._isInsideGeofence(currentLat, currentLng);
+                
+                if (!isInsideNewArea.inside) {
+                    console.log('🚫 Mevcut konum yeni alanın dışında - marker gizleniyor');
+                    
+                    // Marker'ı gizle
+                    if (control._marker) {
+                        map.removeLayer(control._marker);
+                        control._marker = undefined;
+                    }
+                    
+                    // Circle'ı gizle
+                    if (control._circle) {
+                        map.removeLayer(control._circle);
+                        control._circle = undefined;
+                    }
+                    
+                    // Son iyi konumu sıfırla (artık geçersiz)
+                    control._lastGoodLocation = {
+                        latitude: null,
+                        longitude: null,
+                        accuracy: null,
+                        timestamp: null,
+                        confidence: 0
+                    };
+                    
+                    // Konum değerlerini sıfırla
+                    control._latitude = undefined;
+                    control._longitude = undefined;
+                    control._accuracy = undefined;
+                    
+                    // İstatistikleri sıfırla
+                    control._locationStats = {
+                        totalLocations: 0,
+                        rejectedLocations: 0,
+                        geofenceRejections: 0,
+                        speedRejections: 0,
+                        accuracyRejections: 0,
+                        fallbackUsed: 0
+                    };
+                    
+                    // UI'ı güncelle
+                    weiYeInfoControl.updateStats({
+                        accuracy: 0,
+                        altitude: NaN,
+                        isJump: false,
+                        initializing: true,
+                        confidence: 0,
+                        locationStats: control._locationStats,
+                        isFallback: false,
+                        isIndoorMode: true,
+                        isRejected: true,
+                        consecutiveBadLocations: 0
+                    });
+                    
+                    this.showMessage('⚠️ Mevcut konum yeni alanın dışında - yeni konum bekleniyor', 'warning');
+                } else {
+                    console.log('✅ Mevcut konum yeni alanın içinde');
+                }
+            }
         }
         
         // Polygon'u kalıcı yap (yeşil renk)
@@ -214,6 +282,12 @@ const GeofenceSelector = {
         if (type === 'success') {
             msgEl.style.backgroundColor = '#4CAF50';
             msgEl.style.color = 'white';
+        } else if (type === 'warning') {
+            msgEl.style.backgroundColor = '#FF9800';
+            msgEl.style.color = 'white';
+        } else if (type === 'error') {
+            msgEl.style.backgroundColor = '#F44336';
+            msgEl.style.color = 'white';
         } else {
             msgEl.style.backgroundColor = '#2196F3';
             msgEl.style.color = 'white';
@@ -222,8 +296,8 @@ const GeofenceSelector = {
         msgEl.textContent = text;
         msgEl.style.display = 'block';
         
-        // Success mesajı 3 saniye sonra kaybol
-        if (type === 'success') {
+        // Success ve warning mesajları 3 saniye sonra kaybol
+        if (type === 'success' || type === 'warning') {
             setTimeout(() => {
                 msgEl.style.display = 'none';
             }, 3000);
