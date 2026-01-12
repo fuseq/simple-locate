@@ -1,9 +1,38 @@
 "use strict";
 
+// ========== BİNA KONFİGÜRASYONU ==========
+const BUILDING_CONFIG = {
+    // Bina merkez koordinatları
+    center: [37.425936, 31.852136],
+    
+    // Bina sınırları (geofence bounds)
+    // Sol üst: 37.426060, 31.851988
+    // Sağ alt: 37.425836, 31.852270
+    bounds: [
+        [37.425836, 31.851988],  // Güneybatı köşe [minLat, minLng]
+        [37.426060, 31.852270]   // Kuzeydoğu köşe [maxLat, maxLng]
+    ],
+    
+    // Alternatif: Merkez + yarıçap (metre cinsinden)
+    // Bu bina için yaklaşık 50m yarıçap yeterli
+    radius: 50,
+    
+    // İç mekan ayarları
+    indoor: {
+        maxAccuracy: 50,         // İç mekanda kabul edilebilir max accuracy (metre) - küçük bina için daha düşük
+        maxSpeed: 2.0,           // İç mekanda max yürüyüş hızı (m/s) - ~7 km/h
+        medianWindow: 7,         // Daha büyük median penceresi
+        kalmanR: 0.7,            // Ölçüme daha az güven (küçük bina için daha yüksek)
+        lowPassTau: 1.5,         // Daha agresif yumuşatma
+        fallbackTimeout: 30000,  // Son iyi konum 30 saniye geçerli (küçük bina için daha kısa)
+        maxBadLocations: 5       // 5 kötü konum sonrası zorla güncelle
+    }
+};
+
 // 1. Map oluşturma
 const map = new L.Map("map", {
-    center: [41.27447, 28.7291],
-    zoom: 18,
+    center: BUILDING_CONFIG.center,
+    zoom: 20,  // Küçük bina için daha yakın zoom
     zoomControl: false,
 });
 
@@ -52,25 +81,22 @@ let floorAltitudes = {};
 let currentFloorKey = null;
 let doorLinesLatLng = [];
 
-// 3. Map info
+// 3. Map info - Bina koordinatlarına göre ayarlandı
 const mapInfo = {
     viewBox: { width: 8206, height: 10713 },
     coordinates: {
-        maxLat: 41.30582,
-        minLat: 41.24312,
-        maxLng: 28.7609,
-        minLng: 28.6973,
+        maxLat: 37.426060,  // Sol üst lat
+        minLat: 37.425836,  // Sağ alt lat
+        maxLng: 31.852270,  // Sağ alt lng
+        minLng: 31.851988,  // Sol üst lng
     },
-    center: [41.27447, 28.7291],
-    bounds: [
-        [41.30582, 28.7609],
-        [41.24312, 28.6973],
-    ],
+    center: BUILDING_CONFIG.center,
+    bounds: BUILDING_CONFIG.bounds,
     maxBounds: [
-        [41.30882, 28.7639],
-        [41.24012, 28.6943],
+        [37.425700, 31.851800],  // Biraz daha geniş sınırlar
+        [37.426200, 31.852500],
     ],
-    scale: 0.0004072713155,
+    scale: 0.0000005,  // Küçük bina için daha küçük scale
 };
 
 // 4. svgCoordToLatLng fonksiyonu
@@ -183,12 +209,14 @@ function createWeiYeInfoControl() {
                 <div class="wei-ye-info-panel">
                     <div class="wei-ye-title">
                         Konum Bilgisi
-                        
+                        <span class="indoor-badge" style="display: none;">İÇ MEKAN</span>
                     </div>
                     <div class="wei-ye-stats">
                         <div>Doğruluk: <span class="accuracy-value">--</span> m</div>
+                        <div>Güvenilirlik: <span class="confidence-value">--</span>%</div>
                         <div>Altitude: <span class="altitude-value">--</span> m</div>
                         <div>Durum: <span class="is-filtered">Bekleniyor</span></div>
+                        <div class="rejection-info" style="display: none; font-size: 10px; color: #666;"></div>
                         <div class="door-info">Kapı bilgisi bekleniyor...</div>
                     </div>
                 </div>
@@ -201,6 +229,9 @@ function createWeiYeInfoControl() {
             const accuracyEl = this._container.querySelector(".accuracy-value");
             const filteredEl = this._container.querySelector(".is-filtered");
             const altitudeEl = this._container.querySelector(".altitude-value");
+            const confidenceEl = this._container.querySelector(".confidence-value");
+            const indoorBadge = this._container.querySelector(".indoor-badge");
+            const rejectionInfo = this._container.querySelector(".rejection-info");
 
             if (!accuracyEl || !filteredEl || !altitudeEl) return;
 
@@ -209,6 +240,46 @@ function createWeiYeInfoControl() {
                 stats.altitude !== undefined && stats.altitude !== null
                     ? stats.altitude.toFixed(1)
                     : "--";
+
+            // Güvenilirlik skoru
+            if (confidenceEl && stats.confidence !== undefined) {
+                confidenceEl.textContent = Math.round(stats.confidence);
+                if (stats.confidence >= 70) {
+                    confidenceEl.className = "confidence-value confidence-high";
+                    confidenceEl.style.color = "#4CAF50";
+                } else if (stats.confidence >= 40) {
+                    confidenceEl.className = "confidence-value confidence-medium";
+                    confidenceEl.style.color = "#FF9800";
+                } else {
+                    confidenceEl.className = "confidence-value confidence-low";
+                    confidenceEl.style.color = "#F44336";
+                }
+            }
+            
+            // İç mekan badge
+            if (indoorBadge && stats.isIndoorMode) {
+                indoorBadge.style.display = "inline-block";
+                indoorBadge.style.backgroundColor = "#2196F3";
+                indoorBadge.style.color = "white";
+                indoorBadge.style.padding = "2px 6px";
+                indoorBadge.style.borderRadius = "3px";
+                indoorBadge.style.fontSize = "9px";
+                indoorBadge.style.marginLeft = "5px";
+            }
+            
+            // Reddetme istatistikleri
+            if (rejectionInfo && stats.locationStats) {
+                const ls = stats.locationStats;
+                const totalRejections = ls.geofenceRejections + ls.speedRejections + ls.accuracyRejections;
+                if (totalRejections > 0) {
+                    rejectionInfo.style.display = "block";
+                    rejectionInfo.innerHTML = `
+                        Reddedilen: ${totalRejections} 
+                        (Sınır: ${ls.geofenceRejections}, Hız: ${ls.speedRejections}, Doğruluk: ${ls.accuracyRejections})
+                        ${ls.fallbackUsed > 0 ? `| Fallback: ${ls.fallbackUsed}` : ''}
+                    `;
+                }
+            }
 
             if (stats.accuracy <= 5) {
                 accuracyEl.className = "accuracy-value accuracy-good";
@@ -220,7 +291,12 @@ function createWeiYeInfoControl() {
                 accuracyEl.className = "accuracy-value accuracy-poor";
             }
 
-            if (stats.accuracy > 50) {
+            // Fallback kullanılıyorsa özel durum
+            if (stats.isFallback) {
+                this._container.style.border = "2px solid #FF9800";
+                filteredEl.textContent = "Tahmini Konum";
+                filteredEl.style.color = "#FF9800";
+            } else if (stats.accuracy > 50) {
                 this._container.style.border = "2px solid #F44336";
                 filteredEl.textContent = "Belirsiz Konum";
                 filteredEl.style.color = "#F44336";
@@ -261,10 +337,11 @@ function createWeiYeInfoControl() {
 // 9. Wei Ye kontrol panelini oluştur
 const weiYeInfoControl = createWeiYeInfoControl();
 
-// 10. SimpleLocate kontrolü
+// 10. SimpleLocate kontrolü - İSTANBUL HAVALİMANI İÇİN OPTİMİZE EDİLDİ
 const control = new L.Control.SimpleLocate({
     position: "topleft",
 
+    // Temel filtre parametreleri
     medianWindowSize: 3,
     kalmanProcessNoise: 0.05,
     kalmanMeasurementNoise: 0.2,
@@ -275,6 +352,37 @@ const control = new L.Control.SimpleLocate({
     showJumpWarnings: false,
     lowPassFilterTau: 0.5,
     enableLowPassFilter: true,
+    
+    // ========== İÇ MEKAN İYİLEŞTİRMELERİ ==========
+    
+    // Geofence (Coğrafi Sınırlama) - Bina sınırları
+    enableGeofence: true,
+    geofenceBounds: BUILDING_CONFIG.bounds,
+    geofenceCenter: BUILDING_CONFIG.center,
+    geofenceRadius: BUILDING_CONFIG.radius,
+    
+    // Konum Güvenilirlik Sistemi
+    maxAcceptableAccuracy: BUILDING_CONFIG.indoor.maxAccuracy,
+    minAcceptableAccuracy: 5,
+    
+    // Hız Bazlı Sıçrama Tespiti
+    maxHumanSpeed: 5,
+    maxIndoorSpeed: BUILDING_CONFIG.indoor.maxSpeed,
+    
+    // Son İyi Konum Fallback
+    enableLastGoodLocation: true,
+    lastGoodLocationTimeout: BUILDING_CONFIG.indoor.fallbackTimeout,
+    maxConsecutiveBadLocations: BUILDING_CONFIG.indoor.maxBadLocations,
+    
+    // İç Mekan Optimizasyonları
+    indoorMode: true,
+    indoorMedianWindowSize: BUILDING_CONFIG.indoor.medianWindow,
+    indoorKalmanR: BUILDING_CONFIG.indoor.kalmanR,
+    indoorLowPassTau: BUILDING_CONFIG.indoor.lowPassTau,
+    
+    // Konum Doğrulama
+    enablePositionValidation: true,
+    positionValidationStrict: false, // false = kötü konumlarda fallback kullan, true = tamamen reddet
 
     afterDeviceMove: (location) => {
 
@@ -292,6 +400,12 @@ const control = new L.Control.SimpleLocate({
                     isJump: location.isJump,
                     initializing:
                         control._weiYeState?.filteringStats.totalUpdates < 3,
+                    // ========== İÇ MEKAN İYİLEŞTİRMELERİ - YENİ BİLGİLER ==========
+                    confidence: location.confidence,
+                    locationStats: location.locationStats,
+                    isFallback: location.isFallback,
+                    isIndoorMode: location.isIndoorMode,
+                    consecutiveBadLocations: location.consecutiveBadLocations
                 });
 
                 onUserLocationUpdate(lat, lng, altitude);
@@ -303,6 +417,12 @@ const control = new L.Control.SimpleLocate({
                     isJump: location.isJump,
                     initializing:
                         control._weiYeState?.filteringStats.totalUpdates < 3,
+                    // ========== İÇ MEKAN İYİLEŞTİRMELERİ - YENİ BİLGİLER ==========
+                    confidence: location.confidence,
+                    locationStats: location.locationStats,
+                    isFallback: location.isFallback,
+                    isIndoorMode: location.isIndoorMode,
+                    consecutiveBadLocations: location.consecutiveBadLocations
                 });
                 
                 // Altitude alınamazsa da konumu güncelle (altitude NaN)

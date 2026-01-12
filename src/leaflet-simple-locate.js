@@ -53,6 +53,37 @@
             lowPassFilterTau: 0.5,        // Low Pass tau (hızlı tepki)
             enableLowPassFilter: true,    // Low Pass aktif
 
+            // ========== İÇ MEKAN KONUM İYİLEŞTİRMELERİ ==========
+            
+            // Geofence (Coğrafi Sınırlama) - Bina sınırları
+            enableGeofence: true,         // Geofence aktif
+            geofenceBounds: null,         // [[minLat, minLng], [maxLat, maxLng]] formatında
+            geofenceCenter: null,         // [lat, lng] - Bina merkezi
+            geofenceRadius: null,         // metre cinsinden maksimum mesafe
+            
+            // Konum Güvenilirlik Sistemi
+            maxAcceptableAccuracy: 100,   // Bu değerin üstündeki accuracy'ler reddedilir (metre)
+            minAcceptableAccuracy: 5,     // Bu değerin altındaki accuracy'ler çok güvenilir kabul edilir
+            
+            // Hız Bazlı Sıçrama Tespiti
+            maxHumanSpeed: 5,             // Maksimum insan yürüyüş hızı (m/s) - ~18 km/h
+            maxIndoorSpeed: 3,            // İç mekanda maksimum kabul edilebilir hız (m/s)
+            
+            // Son İyi Konum Fallback
+            enableLastGoodLocation: true, // Kötü konum geldiğinde son iyi konumu kullan
+            lastGoodLocationTimeout: 30000, // Son iyi konum ne kadar süre geçerli (ms)
+            maxConsecutiveBadLocations: 5, // Kaç kötü konum sonrası zorla güncelle
+            
+            // İç Mekan Optimizasyonları
+            indoorMode: true,             // İç mekan modu aktif
+            indoorMedianWindowSize: 7,    // İç mekanda daha büyük median penceresi
+            indoorKalmanR: 0.5,           // İç mekanda ölçüme daha az güven
+            indoorLowPassTau: 1.0,        // İç mekanda daha agresif yumuşatma
+            
+            // Konum Geçerleme
+            enablePositionValidation: true, // Konum doğrulama aktif
+            positionValidationStrict: false, // Katı mod - şüpheli konumları tamamen reddet
+
             afterClick: null,
             afterMarkerAdd: null,
             afterDeviceMove: null,
@@ -206,6 +237,45 @@
                 timestamps: [],
                 maxSize: 5 // Son 5 konumu tut
             };
+
+            // ========== İÇ MEKAN İYİLEŞTİRMELERİ - YENİ STATE ==========
+            
+            // Son bilinen iyi konum
+            this._lastGoodLocation = {
+                latitude: null,
+                longitude: null,
+                accuracy: null,
+                timestamp: null,
+                confidence: 0 // 0-100 arası güvenilirlik skoru
+            };
+            
+            // Kötü konum sayacı
+            this._consecutiveBadLocations = 0;
+            
+            // Konum geçmişi (hız hesaplaması için)
+            this._locationHistory = {
+                positions: [],
+                timestamps: [],
+                accuracies: [],
+                maxSize: 10
+            };
+            
+            // Konum istatistikleri
+            this._locationStats = {
+                totalLocations: 0,
+                rejectedLocations: 0,
+                geofenceRejections: 0,
+                speedRejections: 0,
+                accuracyRejections: 0,
+                fallbackUsed: 0
+            };
+            
+            // Geofence cache (hesaplama optimizasyonu)
+            this._geofenceCache = {
+                isInside: null,
+                lastCheck: null,
+                checkInterval: 1000 // 1 saniye
+            };
         },
         
         // iOS tespit fonksiyonu
@@ -316,6 +386,225 @@
             };
         },
 
+        // ========== İÇ MEKAN İYİLEŞTİRMELERİ - YENİ FONKSİYONLAR ==========
+        
+        // Geofence kontrolü - konum bina sınırları içinde mi?
+        _isInsideGeofence: function (lat, lng) {
+            // Geofence devre dışıysa her zaman true döndür
+            if (!this.options.enableGeofence) return { inside: true, reason: null };
+            
+            // Bounds kontrolü (dikdörtgen sınır)
+            if (this.options.geofenceBounds) {
+                const bounds = this.options.geofenceBounds;
+                const minLat = bounds[0][0];
+                const minLng = bounds[0][1];
+                const maxLat = bounds[1][0];
+                const maxLng = bounds[1][1];
+                
+                if (lat < minLat || lat > maxLat || lng < minLng || lng > maxLng) {
+                    return { 
+                        inside: false, 
+                        reason: 'bounds',
+                        message: `Konum bina sınırları dışında: [${lat.toFixed(6)}, ${lng.toFixed(6)}]`
+                    };
+                }
+            }
+            
+            // Radius kontrolü (dairesel sınır)
+            if (this.options.geofenceCenter && this.options.geofenceRadius) {
+                const center = this.options.geofenceCenter;
+                const maxRadius = this.options.geofenceRadius;
+                
+                const distance = L.latLng(lat, lng).distanceTo(L.latLng(center[0], center[1]));
+                
+                if (distance > maxRadius) {
+                    return { 
+                        inside: false, 
+                        reason: 'radius',
+                        distance: distance,
+                        message: `Konum merkezden ${Math.round(distance)}m uzakta (max: ${maxRadius}m)`
+                    };
+                }
+            }
+            
+            return { inside: true, reason: null };
+        },
+        
+        // Hız kontrolü - imkansız sıçramaları tespit et
+        _checkSpeedValidity: function (newLat, newLng, timestamp) {
+            const history = this._locationHistory;
+            
+            // Geçmiş yoksa geçerli kabul et
+            if (history.positions.length === 0) {
+                return { valid: true, speed: 0 };
+            }
+            
+            // Son konumu al
+            const lastPos = history.positions[history.positions.length - 1];
+            const lastTime = history.timestamps[history.timestamps.length - 1];
+            
+            // Zaman farkını hesapla (saniye)
+            const timeDiff = Math.abs(timestamp - lastTime) / 1000;
+            
+            // Çok kısa sürede gelen konumları atla (GPS noise)
+            if (timeDiff < 0.5) {
+                return { valid: true, speed: 0, reason: 'too_fast_update' };
+            }
+            
+            // Mesafeyi hesapla
+            const distance = L.latLng(lastPos.latitude, lastPos.longitude)
+                .distanceTo(L.latLng(newLat, newLng));
+            
+            // Hızı hesapla (m/s)
+            const speed = distance / timeDiff;
+            
+            // İç mekan modunda daha düşük hız limiti
+            const maxSpeed = this.options.indoorMode 
+                ? this.options.maxIndoorSpeed 
+                : this.options.maxHumanSpeed;
+            
+            if (speed > maxSpeed) {
+                return { 
+                    valid: false, 
+                    speed: speed,
+                    distance: distance,
+                    timeDiff: timeDiff,
+                    reason: 'impossible_speed',
+                    message: `İmkansız hız: ${speed.toFixed(1)} m/s (${(speed * 3.6).toFixed(1)} km/h), max: ${maxSpeed} m/s`
+                };
+            }
+            
+            return { valid: true, speed: speed };
+        },
+        
+        // Konum güvenilirlik skorunu hesapla (0-100)
+        _calculateLocationConfidence: function (position, geofenceResult, speedResult) {
+            let confidence = 100;
+            
+            // Accuracy bazlı skor düşürme
+            if (position.accuracy > this.options.maxAcceptableAccuracy) {
+                confidence -= 50;
+            } else if (position.accuracy > 50) {
+                confidence -= 30;
+            } else if (position.accuracy > 30) {
+                confidence -= 20;
+            } else if (position.accuracy > 15) {
+                confidence -= 10;
+            } else if (position.accuracy <= this.options.minAcceptableAccuracy) {
+                confidence += 10; // Çok iyi accuracy bonus
+            }
+            
+            // Geofence ihlali
+            if (!geofenceResult.inside) {
+                confidence -= 40;
+            }
+            
+            // Hız ihlali
+            if (!speedResult.valid) {
+                confidence -= 30;
+            }
+            
+            // iOS cihazlarda iç mekanda genellikle daha düşük güvenilirlik
+            if (this._isIOS && this.options.indoorMode) {
+                confidence -= 5;
+            }
+            
+            // Sınırla 0-100 arası
+            return Math.max(0, Math.min(100, confidence));
+        },
+        
+        // Son iyi konumu güncelle
+        _updateLastGoodLocation: function (position, confidence) {
+            // Sadece yeterli güvenilirlikte konumları kaydet
+            if (confidence >= 50) {
+                this._lastGoodLocation = {
+                    latitude: position.latitude,
+                    longitude: position.longitude,
+                    accuracy: position.accuracy,
+                    timestamp: position.timestamp || Date.now(),
+                    confidence: confidence
+                };
+                this._consecutiveBadLocations = 0;
+            } else {
+                this._consecutiveBadLocations++;
+            }
+        },
+        
+        // Konum geçmişini güncelle
+        _updateLocationHistory: function (position) {
+            const history = this._locationHistory;
+            
+            history.positions.push({
+                latitude: position.latitude,
+                longitude: position.longitude
+            });
+            history.timestamps.push(position.timestamp || Date.now());
+            history.accuracies.push(position.accuracy);
+            
+            // Maksimum boyutu aşarsa en eskisini kaldır
+            while (history.positions.length > history.maxSize) {
+                history.positions.shift();
+                history.timestamps.shift();
+                history.accuracies.shift();
+            }
+        },
+        
+        // Son iyi konumu kullan (fallback)
+        _getLastGoodLocationFallback: function (currentPosition) {
+            const lastGood = this._lastGoodLocation;
+            
+            // Son iyi konum yoksa veya çok eskiyse, mevcut konumu döndür
+            if (!lastGood.latitude || !lastGood.longitude) {
+                return null;
+            }
+            
+            const now = Date.now();
+            const age = now - lastGood.timestamp;
+            
+            // Timeout kontrolü
+            if (age > this.options.lastGoodLocationTimeout) {
+                return null;
+            }
+            
+            // Çok fazla kötü konum geldiyse zorla güncelle
+            if (this._consecutiveBadLocations >= this.options.maxConsecutiveBadLocations) {
+                console.warn(`⚠️ ${this.options.maxConsecutiveBadLocations} ardışık kötü konum, zorla güncelleniyor`);
+                this._consecutiveBadLocations = 0;
+                return null;
+            }
+            
+            this._locationStats.fallbackUsed++;
+            
+            return {
+                latitude: lastGood.latitude,
+                longitude: lastGood.longitude,
+                accuracy: Math.max(lastGood.accuracy, currentPosition.accuracy), // Daha kötü accuracy kullan
+                timestamp: currentPosition.timestamp,
+                isFallback: true,
+                originalPosition: currentPosition
+            };
+        },
+        
+        // Konum istatistiklerini al
+        getLocationStats: function () {
+            return { ...this._locationStats };
+        },
+        
+        // Geofence'i dinamik olarak ayarla
+        setGeofence: function (options) {
+            if (options.bounds) {
+                this.options.geofenceBounds = options.bounds;
+            }
+            if (options.center) {
+                this.options.geofenceCenter = options.center;
+            }
+            if (options.radius) {
+                this.options.geofenceRadius = options.radius;
+            }
+            // Cache'i temizle
+            this._geofenceCache.isInside = null;
+        },
+
         // Kalman Filtreyi uygula
         _applyWeiYeFilter: function (position) {
             // Filtreleme devre dışıysa, orijinal konumu döndür
@@ -323,8 +612,99 @@
                 return position;
             }
             
+            this._locationStats.totalLocations++;
+            const timestamp = position.timestamp || Date.now();
+            
             const isIOSDevice = this._isIOS;
+            const isIndoorMode = this.options.indoorMode;
             const isLowAccuracy = position.accuracy > 20;
+            
+            // ========== ADIM 1: ACCURACY KONTROLÜ ==========
+            if (this.options.enablePositionValidation && 
+                position.accuracy > this.options.maxAcceptableAccuracy) {
+                
+                this._locationStats.accuracyRejections++;
+                console.warn(`⚠️ Accuracy çok yüksek: ${position.accuracy}m (max: ${this.options.maxAcceptableAccuracy}m)`);
+                
+                // Fallback kullan
+                if (this.options.enableLastGoodLocation) {
+                    const fallback = this._getLastGoodLocationFallback(position);
+                    if (fallback) {
+                        console.log(`📍 Son iyi konum kullanılıyor (accuracy rejection)`);
+                        return fallback;
+                    }
+                }
+                
+                // Katı modda tamamen reddet
+                if (this.options.positionValidationStrict) {
+                    return this._weiYeState.lastFilteredPosition || position;
+                }
+            }
+            
+            // ========== ADIM 2: GEOFENCE KONTROLÜ ==========
+            const geofenceResult = this._isInsideGeofence(position.latitude, position.longitude);
+            
+            if (!geofenceResult.inside) {
+                this._locationStats.geofenceRejections++;
+                console.warn(`⚠️ Geofence ihlali: ${geofenceResult.message}`);
+                
+                // Fallback kullan
+                if (this.options.enableLastGoodLocation) {
+                    const fallback = this._getLastGoodLocationFallback(position);
+                    if (fallback) {
+                        console.log(`📍 Son iyi konum kullanılıyor (geofence rejection)`);
+                        return fallback;
+                    }
+                }
+                
+                // Katı modda tamamen reddet
+                if (this.options.positionValidationStrict) {
+                    return this._weiYeState.lastFilteredPosition || position;
+                }
+            }
+            
+            // ========== ADIM 3: HIZ KONTROLÜ ==========
+            const speedResult = this._checkSpeedValidity(
+                position.latitude, 
+                position.longitude, 
+                timestamp
+            );
+            
+            if (!speedResult.valid) {
+                this._locationStats.speedRejections++;
+                console.warn(`⚠️ Hız ihlali: ${speedResult.message}`);
+                
+                // Fallback kullan
+                if (this.options.enableLastGoodLocation) {
+                    const fallback = this._getLastGoodLocationFallback(position);
+                    if (fallback) {
+                        console.log(`📍 Son iyi konum kullanılıyor (speed rejection)`);
+                        return fallback;
+                    }
+                }
+                
+                // Katı modda tamamen reddet
+                if (this.options.positionValidationStrict) {
+                    return this._weiYeState.lastFilteredPosition || position;
+                }
+            }
+            
+            // ========== ADIM 4: GÜVENİLİRLİK SKORU ==========
+            const confidence = this._calculateLocationConfidence(position, geofenceResult, speedResult);
+            
+            // Konum geçmişini güncelle (hız hesaplaması için)
+            this._updateLocationHistory(position);
+            
+            // ========== ADIM 5: İÇ MEKAN OPTİMİZASYONLARI ==========
+            // İç mekan modunda filtre parametrelerini dinamik olarak ayarla
+            if (isIndoorMode) {
+                // Daha büyük median penceresi
+                this._medianFilter.windowSize = this.options.indoorMedianWindowSize;
+                
+                // Daha yüksek Kalman R değeri (ölçüme daha az güven)
+                this._kalmanFilter.R_lat = this.options.indoorKalmanR;
+                this._kalmanFilter.R_lng = this.options.indoorKalmanR;
+            }
             
             // iOS'ta çok düşük accuracy ile gelen konumları filtrele (sadece önceki konum varsa)
             if (isIOSDevice && position.accuracy > 45 && this._weiYeState.lastFilteredPosition) {
@@ -616,6 +996,20 @@
                 isJump: isJump,
                 timestamp: position.timestamp
             };
+            
+            // 6. SON İYİ KONUMU GÜNCELLE
+            // Filtrelenmiş konum için yeniden güvenilirlik hesapla
+            const filteredGeofence = this._isInsideGeofence(kalmanFiltered.latitude, kalmanFiltered.longitude);
+            const finalConfidence = this._calculateLocationConfidence(
+                kalmanFiltered, 
+                filteredGeofence, 
+                { valid: true, speed: 0 }
+            );
+            this._updateLastGoodLocation(kalmanFiltered, finalConfidence);
+            
+            // Güvenilirlik bilgisini ekle
+            kalmanFiltered.confidence = finalConfidence;
+            kalmanFiltered.isIndoorMode = this.options.indoorMode;
 
             return kalmanFiltered;
         },
@@ -752,6 +1146,45 @@
             // Hareket geçmişini sıfırla
             this._movementHistory.positions = [];
             this._movementHistory.timestamps = [];
+            
+            // ========== İÇ MEKAN İYİLEŞTİRMELERİ - SIFIRLAMA ==========
+            
+            // Son iyi konum sıfırla
+            this._lastGoodLocation = {
+                latitude: null,
+                longitude: null,
+                accuracy: null,
+                timestamp: null,
+                confidence: 0
+            };
+            
+            // Kötü konum sayacı sıfırla
+            this._consecutiveBadLocations = 0;
+            
+            // Konum geçmişi sıfırla
+            this._locationHistory = {
+                positions: [],
+                timestamps: [],
+                accuracies: [],
+                maxSize: 10
+            };
+            
+            // İstatistikleri sıfırla
+            this._locationStats = {
+                totalLocations: 0,
+                rejectedLocations: 0,
+                geofenceRejections: 0,
+                speedRejections: 0,
+                accuracyRejections: 0,
+                fallbackUsed: 0
+            };
+            
+            // Geofence cache sıfırla
+            this._geofenceCache = {
+                isInside: null,
+                lastCheck: null,
+                checkInterval: 1000
+            };
         },
 
         _checkClickResult: function () {
@@ -957,7 +1390,13 @@
                     angle: this._angle,
                     isFiltered: true,
                     isJump: this._weiYeState.isJumpDetected,
-                    filterStats: this._weiYeState.filteringStats
+                    filterStats: this._weiYeState.filteringStats,
+                    // ========== İÇ MEKAN İYİLEŞTİRMELERİ - YENİ BİLGİLER ==========
+                    confidence: this._lastGoodLocation.confidence,
+                    locationStats: this._locationStats,
+                    isFallback: this._weiYeState.lastFilteredPosition?.isFallback || false,
+                    isIndoorMode: this.options.indoorMode,
+                    consecutiveBadLocations: this._consecutiveBadLocations
                 });
             }
 
