@@ -9,21 +9,16 @@ const BUILDING_CONFIG = {
     // Sağ alt:  { lat: 37.42587168665244,  lng: 31.852276238006343 }
     
     // Bina merkez koordinatları
-    center: [37.425988, 31.852125],
+    center: [37.425988, 31.852127],
     
-    // Bina sınırları (geofence bounds)
-    // Min/Max hesaplaması + ~15m GPS toleransı
-    // minLat: 37.425819 -> 37.42567 (-15m)
-    // maxLat: 37.426157 -> 37.42631 (+15m)
-    // minLng: 31.851978 -> 31.85183 (-15m)
-    // maxLng: 31.852276 -> 31.85243 (+15m)
+    // Bina sınırları (geofence bounds) - TOLERANSSIZ, TAM KOORDİNATLAR
     bounds: [
-        [37.42567, 31.85183],  // Güneybatı köşe [minLat, minLng]
-        [37.42631, 31.85243]   // Kuzeydoğu köşe [maxLat, maxLng]
+        [37.42581950040381, 31.851978335853158],  // minLat, minLng (Sol alt lat, Sol üst lng)
+        [37.42615722437654, 31.852276238006343]   // maxLat, maxLng (Sağ üst lat, Sağ alt lng)
     ],
     
     // Alternatif: Merkez + yarıçap (metre cinsinden)
-    radius: 60,
+    radius: 35,  // Bina boyutuna uygun
     
     // İç mekan ayarları
     indoor: {
@@ -93,15 +88,15 @@ let doorLinesLatLng = [];
 const mapInfo = {
     viewBox: { width: 8206, height: 10713 },
     coordinates: {
-        maxLat: 37.426157,  // Sağ üst lat
-        minLat: 37.425819,  // Sol alt lat
-        maxLng: 31.852276,  // Sağ alt lng
-        minLng: 31.851978,  // Sol üst lng
+        maxLat: 37.42615722437654,   // Sağ üst lat
+        minLat: 37.42581950040381,   // Sol alt lat
+        maxLng: 31.852276238006343,  // Sağ alt lng
+        minLng: 31.851978335853158,  // Sol üst lng
     },
     center: BUILDING_CONFIG.center,
     bounds: BUILDING_CONFIG.bounds,
     maxBounds: [
-        [37.42550, 31.85165],  // Daha geniş sınırlar (harita pan için)
+        [37.42550, 31.85165],  // Harita pan için geniş sınırlar
         [37.42650, 31.85260],
     ],
     scale: 0.0000005,
