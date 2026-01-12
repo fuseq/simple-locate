@@ -515,8 +515,11 @@
         
         // Son iyi konumu güncelle
         _updateLastGoodLocation: function (position, confidence) {
-            // Sadece yeterli güvenilirlikte konumları kaydet
-            if (confidence >= 50) {
+            // Geofence kontrolü - sadece alan İÇİNDE olan konumları kaydet
+            const geofenceCheck = this._isInsideGeofence(position.latitude, position.longitude);
+            
+            // Sadece yeterli güvenilirlikte VE alan içinde olan konumları kaydet
+            if (confidence >= 50 && geofenceCheck.inside) {
                 this._lastGoodLocation = {
                     latitude: position.latitude,
                     longitude: position.longitude,
@@ -527,6 +530,10 @@
                 this._consecutiveBadLocations = 0;
             } else {
                 this._consecutiveBadLocations++;
+                // Alan dışındaki konumu son iyi konum olarak kaydetme!
+                if (!geofenceCheck.inside) {
+                    console.log(`🚫 Alan dışı konum son iyi konum olarak kaydedilmedi`);
+                }
             }
         },
         
@@ -1311,6 +1318,34 @@
             if (!filteredPosition.latitude || !filteredPosition.longitude) {
                 return;
             }
+            
+            // ========== EK GÜVENLİK: FİLTRELENMİŞ KONUM İÇİN DE GEOFENCE KONTROLÜ ==========
+            // Bu, filtreleme sonrası konumun hala alan içinde olduğundan emin olur
+            const finalGeofenceCheck = this._isInsideGeofence(filteredPosition.latitude, filteredPosition.longitude);
+            if (!finalGeofenceCheck.inside) {
+                console.log(`🚫 Filtrelenmiş konum hala alan dışında - marker güncellenmeyecek`);
+                this._locationStats.geofenceRejections++;
+                
+                // Callback'i çağır
+                if (this.options.afterDeviceMove) {
+                    this.options.afterDeviceMove({
+                        lat: this._latitude,
+                        lng: this._longitude,
+                        accuracy: this._accuracy,
+                        angle: this._angle,
+                        isFiltered: true,
+                        isRejected: true,
+                        isJump: false,
+                        filterStats: this._weiYeState.filteringStats,
+                        confidence: 0,
+                        locationStats: this._locationStats,
+                        isFallback: false,
+                        isIndoorMode: this.options.indoorMode,
+                        consecutiveBadLocations: this._consecutiveBadLocations
+                    });
+                }
+                return;
+            }
 
             // Önceki filtrelenmiş konumla aynıysa güncelleme yapma (micro değişiklikleri engelle)
             if (this._latitude && filteredPosition.latitude &&
@@ -1422,6 +1457,22 @@
             }
 
             if (!this._latitude || !this._longitude || (this.options.drawCircle && !this._accuracy)) {
+                return;
+            }
+            
+            // ========== EK GÜVENLİK: MARKER GÜNCELLENİRKEN DE GEOFENCE KONTROLÜ ==========
+            const markerGeofenceCheck = this._isInsideGeofence(this._latitude, this._longitude);
+            if (!markerGeofenceCheck.inside) {
+                console.log(`🚫 Marker konumu alan dışında - marker gizleniyor`);
+                // Mevcut marker ve circle'ı gizle
+                if (this._marker) {
+                    this._map.removeLayer(this._marker);
+                    this._marker = undefined;
+                }
+                if (this._circle) {
+                    this._map.removeLayer(this._circle);
+                    this._circle = undefined;
+                }
                 return;
             }
 
