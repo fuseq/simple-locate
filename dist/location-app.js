@@ -2,20 +2,28 @@
 
 // ========== BİNA KONFİGÜRASYONU ==========
 const BUILDING_CONFIG = {
+    // Bina köşe koordinatları (referans)
+    // Sol üst:  { lat: 37.426112493479096, lng: 31.851978335853158 }
+    // Sağ üst:  { lat: 37.42615722437654,  lng: 31.852156032200394 }
+    // Sol alt:  { lat: 37.42581950040381,  lng: 31.852089153927555 }
+    // Sağ alt:  { lat: 37.42587168665244,  lng: 31.852276238006343 }
+    
     // Bina merkez koordinatları
-    center: [37.425936, 31.852136],
+    center: [37.425988, 31.852125],
     
     // Bina sınırları (geofence bounds)
-    // Sol üst: 37.426060, 31.851988
-    // Sağ alt: 37.425836, 31.852270
+    // Min/Max hesaplaması + ~15m GPS toleransı
+    // minLat: 37.425819 -> 37.42567 (-15m)
+    // maxLat: 37.426157 -> 37.42631 (+15m)
+    // minLng: 31.851978 -> 31.85183 (-15m)
+    // maxLng: 31.852276 -> 31.85243 (+15m)
     bounds: [
-        [37.425836, 31.851988],  // Güneybatı köşe [minLat, minLng]
-        [37.426060, 31.852270]   // Kuzeydoğu köşe [maxLat, maxLng]
+        [37.42567, 31.85183],  // Güneybatı köşe [minLat, minLng]
+        [37.42631, 31.85243]   // Kuzeydoğu köşe [maxLat, maxLng]
     ],
     
     // Alternatif: Merkez + yarıçap (metre cinsinden)
-    // Bu bina için yaklaşık 50m yarıçap yeterli
-    radius: 50,
+    radius: 60,
     
     // İç mekan ayarları
     indoor: {
@@ -85,18 +93,18 @@ let doorLinesLatLng = [];
 const mapInfo = {
     viewBox: { width: 8206, height: 10713 },
     coordinates: {
-        maxLat: 37.426060,  // Sol üst lat
-        minLat: 37.425836,  // Sağ alt lat
-        maxLng: 31.852270,  // Sağ alt lng
-        minLng: 31.851988,  // Sol üst lng
+        maxLat: 37.426157,  // Sağ üst lat
+        minLat: 37.425819,  // Sol alt lat
+        maxLng: 31.852276,  // Sağ alt lng
+        minLng: 31.851978,  // Sol üst lng
     },
     center: BUILDING_CONFIG.center,
     bounds: BUILDING_CONFIG.bounds,
     maxBounds: [
-        [37.425700, 31.851800],  // Biraz daha geniş sınırlar
-        [37.426200, 31.852500],
+        [37.42550, 31.85165],  // Daha geniş sınırlar (harita pan için)
+        [37.42650, 31.85260],
     ],
-    scale: 0.0000005,  // Küçük bina için daha küçük scale
+    scale: 0.0000005,
 };
 
 // 4. svgCoordToLatLng fonksiyonu
