@@ -106,17 +106,24 @@ const GeofenceSelector = {
         // Bounds hesapla
         const bounds = this.calculateBounds();
         
+        // Köşeleri sıralı hale getir (polygon için)
+        const sortedCorners = this.sortCorners(this.corners);
+        const polygonArray = sortedCorners.map(c => ({ lat: c.lat, lng: c.lng }));
+        
         // BUILDING_CONFIG'i güncelle
         BUILDING_CONFIG.bounds = bounds.array;
         BUILDING_CONFIG.center = bounds.center;
+        BUILDING_CONFIG.polygon = polygonArray;  // Polygon köşelerini kaydet
         
-        // Control'ü güncelle (eğer varsa)
+        // Control'ü güncelle (eğer varsa) - POLYGON DAHİL
         if (typeof control !== 'undefined' && control.setGeofence) {
             control.setGeofence({
                 bounds: bounds.array,
                 center: bounds.center,
-                radius: bounds.radius
+                radius: bounds.radius,
+                polygon: polygonArray  // ÖNEMLİ: Polygon köşelerini gönder
             });
+            console.log('✅ Geofence polygon control\'e aktarıldı');
         }
         
         // Polygon'u kalıcı yap (yeşil renk)
@@ -139,6 +146,7 @@ const GeofenceSelector = {
         console.log('📍 Geofence Koordinatları:', {
             bounds: bounds.array,
             center: bounds.center,
+            polygon: polygonArray,
             corners: this.corners.map(c => ({ lat: c.lat, lng: c.lng }))
         });
         

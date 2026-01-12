@@ -60,6 +60,7 @@
             geofenceBounds: null,         // [[minLat, minLng], [maxLat, maxLng]] formatında
             geofenceCenter: null,         // [lat, lng] - Bina merkezi
             geofenceRadius: null,         // metre cinsinden maksimum mesafe
+            geofencePolygon: null,        // [{lat, lng}, ...] - Gerçek polygon köşeleri (ÖNCELİKLİ)
             
             // Konum Güvenilirlik Sistemi
             maxAcceptableAccuracy: 100,   // Bu değerin üstündeki accuracy'ler reddedilir (metre)
@@ -393,7 +394,23 @@
             // Geofence devre dışıysa her zaman true döndür
             if (!this.options.enableGeofence) return { inside: true, reason: null };
             
-            // Bounds kontrolü (dikdörtgen sınır)
+            // ========== 1. POLYGON KONTROLÜ (ÖNCELİKLİ) ==========
+            // Eğer geofencePolygon varsa, gerçek polygon kontrolü yap
+            if (this.options.geofencePolygon && this.options.geofencePolygon.length >= 3) {
+                const isInPolygon = this._pointInPolygon(lat, lng, this.options.geofencePolygon);
+                
+                if (!isInPolygon) {
+                    return { 
+                        inside: false, 
+                        reason: 'polygon',
+                        message: `Konum belirlenen alan dışında: [${lat.toFixed(6)}, ${lng.toFixed(6)}]`
+                    };
+                }
+                // Polygon içindeyse, diğer kontrolleri atla
+                return { inside: true, reason: null };
+            }
+            
+            // ========== 2. BOUNDS KONTROLÜ (dikdörtgen sınır - fallback) ==========
             if (this.options.geofenceBounds) {
                 const bounds = this.options.geofenceBounds;
                 const minLat = bounds[0][0];
@@ -410,7 +427,7 @@
                 }
             }
             
-            // Radius kontrolü (dairesel sınır)
+            // ========== 3. RADIUS KONTROLÜ (dairesel sınır) ==========
             if (this.options.geofenceCenter && this.options.geofenceRadius) {
                 const center = this.options.geofenceCenter;
                 const maxRadius = this.options.geofenceRadius;
@@ -428,6 +445,40 @@
             }
             
             return { inside: true, reason: null };
+        },
+        
+        // Point-in-Polygon algoritması (Ray Casting)
+        _pointInPolygon: function (lat, lng, polygon) {
+            // polygon = [{lat, lng}, {lat, lng}, ...] veya [[lat, lng], [lat, lng], ...]
+            let inside = false;
+            const n = polygon.length;
+            
+            for (let i = 0, j = n - 1; i < n; j = i++) {
+                // Polygon noktalarını al
+                let xi, yi, xj, yj;
+                
+                if (polygon[i].lat !== undefined) {
+                    // {lat, lng} formatı
+                    xi = polygon[i].lat;
+                    yi = polygon[i].lng;
+                    xj = polygon[j].lat;
+                    yj = polygon[j].lng;
+                } else {
+                    // [lat, lng] formatı
+                    xi = polygon[i][0];
+                    yi = polygon[i][1];
+                    xj = polygon[j][0];
+                    yj = polygon[j][1];
+                }
+                
+                // Ray casting algoritması
+                const intersect = ((yi > lng) !== (yj > lng)) &&
+                    (lat < (xj - xi) * (lng - yi) / (yj - yi) + xi);
+                
+                if (intersect) inside = !inside;
+            }
+            
+            return inside;
         },
         
         // Hız kontrolü - imkansız sıçramaları tespit et
@@ -607,6 +658,11 @@
             }
             if (options.radius) {
                 this.options.geofenceRadius = options.radius;
+            }
+            // ========== POLYGON DESTEĞİ ==========
+            if (options.polygon) {
+                this.options.geofencePolygon = options.polygon;
+                console.log('📐 Geofence polygon ayarlandı:', options.polygon.length, 'köşe');
             }
             // Cache'i temizle
             this._geofenceCache.isInside = null;
