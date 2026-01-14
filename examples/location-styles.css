@@ -209,6 +209,16 @@ svg path[stroke-dasharray="10, 6"] {
     transform: translateX(-50%) scale(0.98);
 }
 
+/* Tamamla butonu */
+#geofence-finish-btn:hover {
+    background: #45a049 !important;
+    transform: translateX(-50%) scale(1.02);
+}
+
+#geofence-finish-btn:active {
+    transform: translateX(-50%) scale(0.98);
+}
+
 /* Mobil uyumluluk */
 @media screen and (max-width: 640px) {
     .geofence-select-btn {
@@ -225,5 +235,11 @@ svg path[stroke-dasharray="10, 6"] {
     #geofence-reset-btn {
         font-size: 12px !important;
         padding: 8px 16px !important;
+    }
+    
+    #geofence-finish-btn {
+        font-size: 12px !important;
+        padding: 10px 20px !important;
+        bottom: 70px !important;
     }
 }

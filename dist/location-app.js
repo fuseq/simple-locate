@@ -6,7 +6,8 @@ const GeofenceSelector = {
     corners: [],
     markers: [],
     polygon: null,
-    maxCorners: 4,
+    minCorners: 3,  // Minimum 3 köşe gerekli (üçgen)
+    finishButton: null,
     
     // Seçiciyi başlat
     start: function(map) {
@@ -18,16 +19,18 @@ const GeofenceSelector = {
         map.getContainer().style.cursor = 'crosshair';
         
         // Bilgi mesajı göster
-        this.showMessage('📍 Alan belirlemek için 4 köşeye tıklayın (1/4)');
+        this.showMessage('📍 Alan belirlemek için köşelere tıklayın (min. 3 köşe)');
         
         // Tıklama event'i ekle
         map.on('click', this.onMapClick, this);
+        
+        // "Tamamla" butonunu göster
+        this.showFinishButton(map);
     },
     
     // Haritaya tıklandığında
     onMapClick: function(e) {
         if (!this.isActive) return;
-        if (this.corners.length >= this.maxCorners) return;
         
         const latlng = e.latlng;
         this.corners.push(latlng);
@@ -54,11 +57,14 @@ const GeofenceSelector = {
         this.updatePolygon(map);
         
         // Mesaj güncelle
-        if (this.corners.length < this.maxCorners) {
-            this.showMessage(`📍 Alan belirlemek için ${this.maxCorners - this.corners.length} köşe daha seçin (${this.corners.length}/${this.maxCorners})`);
+        if (this.corners.length < this.minCorners) {
+            this.showMessage(`📍 En az ${this.minCorners - this.corners.length} köşe daha seçin (${this.corners.length}/${this.minCorners}+)`);
         } else {
-            this.finish(map);
+            this.showMessage(`📍 ${this.corners.length} köşe seçildi - "Tamamla" butonuna basın veya köşe eklemeye devam edin`);
         }
+        
+        // "Tamamla" butonunu güncelle
+        this.updateFinishButton();
     },
     
     // Polygon'u güncelle
@@ -68,16 +74,68 @@ const GeofenceSelector = {
         }
         
         if (this.corners.length >= 2) {
-            // Köşeleri sıralı hale getir (saat yönünde)
-            const sortedCorners = this.sortCorners(this.corners);
+            // Köşeleri seçim sırasına göre kullan (sortCorners'ı KALDIRDIK)
+            // Leaflet polygon otomatik olarak son köşeyi ilk köşeye bağlar
+            const cornerLatLngs = this.corners.map(c => [c.lat, c.lng]);
             
-            this.polygon = L.polygon(sortedCorners, {
+            this.polygon = L.polygon(cornerLatLngs, {
                 color: '#2196F3',
                 fillColor: '#2196F3',
                 fillOpacity: 0.2,
                 weight: 2,
                 dashArray: '5, 5'
             }).addTo(map);
+        }
+    },
+    
+    // "Tamamla" butonunu göster
+    showFinishButton: function(map) {
+        if (this.finishButton) return;
+        
+        this.finishButton = document.createElement('button');
+        this.finishButton.id = 'geofence-finish-btn';
+        this.finishButton.innerHTML = '✅ Tamamla (min. 3 köşe)';
+        this.finishButton.style.cssText = `
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            background: #4CAF50;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            opacity: 0.5;
+            pointer-events: none;
+            transition: all 0.2s ease;
+        `;
+        this.finishButton.onclick = () => {
+            if (this.corners.length >= this.minCorners) {
+                this.finish(map);
+            }
+        };
+        document.body.appendChild(this.finishButton);
+    },
+    
+    // "Tamamla" butonunu güncelle
+    updateFinishButton: function() {
+        if (!this.finishButton) return;
+        
+        if (this.corners.length >= this.minCorners) {
+            this.finishButton.style.opacity = '1';
+            this.finishButton.style.pointerEvents = 'auto';
+            this.finishButton.style.background = '#4CAF50';
+            this.finishButton.innerHTML = `✅ Tamamla (${this.corners.length} köşe)`;
+        } else {
+            this.finishButton.style.opacity = '0.5';
+            this.finishButton.style.pointerEvents = 'none';
+            this.finishButton.style.background = '#9E9E9E';
+            this.finishButton.innerHTML = `✅ Tamamla (min. ${this.minCorners - this.corners.length} köşe daha)`;
         }
     },
     
@@ -99,16 +157,27 @@ const GeofenceSelector = {
     
     // Seçimi tamamla
     finish: function(map) {
+        // Minimum köşe kontrolü
+        if (this.corners.length < this.minCorners) {
+            this.showMessage(`⚠️ En az ${this.minCorners} köşe seçmelisiniz (şu an: ${this.corners.length})`, 'warning');
+            return;
+        }
+        
         this.isActive = false;
         map.getContainer().style.cursor = '';
         map.off('click', this.onMapClick, this);
         
+        // "Tamamla" butonunu gizle
+        if (this.finishButton) {
+            this.finishButton.style.display = 'none';
+        }
+        
         // Bounds hesapla
         const bounds = this.calculateBounds();
         
-        // Köşeleri sıralı hale getir (polygon için)
-        const sortedCorners = this.sortCorners(this.corners);
-        const polygonArray = sortedCorners.map(c => ({ lat: c.lat, lng: c.lng }));
+        // Köşeleri seçim sırasına göre kullan (sortCorners KALDIRILDI)
+        // Leaflet polygon otomatik olarak son köşeyi ilk köşeye bağlar
+        const polygonArray = this.corners.map(c => ({ lat: c.lat, lng: c.lng }));
         
         // BUILDING_CONFIG'i güncelle
         BUILDING_CONFIG.bounds = bounds.array;
@@ -192,6 +261,12 @@ const GeofenceSelector = {
                     console.log('✅ Mevcut konum yeni alanın içinde');
                 }
             }
+        }
+        
+        // Varsayılan polygon'u kaldır (eğer varsa)
+        if (typeof defaultPolygonLayer !== 'undefined' && defaultPolygonLayer) {
+            map.removeLayer(defaultPolygonLayer);
+            defaultPolygonLayer = null;
         }
         
         // Polygon'u kalıcı yap (yeşil renk)
@@ -346,6 +421,12 @@ const GeofenceSelector = {
         const msgEl = document.getElementById('geofence-message');
         if (msgEl) msgEl.style.display = 'none';
         
+        // "Tamamla" butonunu temizle
+        if (this.finishButton) {
+            this.finishButton.style.display = 'none';
+            this.finishButton = null;
+        }
+        
         // Yeniden başlat
         this.start(map);
     }
@@ -353,23 +434,29 @@ const GeofenceSelector = {
 
 // ========== BİNA KONFİGÜRASYONU ==========
 const BUILDING_CONFIG = {
-    // Bina köşe koordinatları (referans)
-    // Sol üst:  { lat: 37.426112493479096, lng: 31.851978335853158 }
-    // Sağ üst:  { lat: 37.42615722437654,  lng: 31.852156032200394 }
-    // Sol alt:  { lat: 37.42581950040381,  lng: 31.852089153927555 }
-    // Sağ alt:  { lat: 37.42587168665244,  lng: 31.852276238006343 }
-    
     // Bina merkez koordinatları
-    center: [37.425988, 31.852127],
+    center: [41.261075737827085, 28.742390871047977],
     
-    // Bina sınırları (geofence bounds) - TOLERANSSIZ, TAM KOORDİNATLAR
+    // Bina sınırları (geofence bounds)
     bounds: [
-        [37.42581950040381, 31.851978335853158],  // minLat, minLng (Sol alt lat, Sol üst lng)
-        [37.42615722437654, 31.852276238006343]   // maxLat, maxLng (Sağ üst lat, Sağ alt lng)
+        [41.259553469375234, 28.73830854892731],  // minLat, minLng
+        [41.26259800627894, 28.746473193168644]   // maxLat, maxLng
+    ],
+    
+    // Polygon köşeleri (8 köşe)
+    polygon: [
+        {lat: 41.262509293303935, lng: 28.73833537101746},
+        {lat: 41.26132778628279, lng: 28.73830854892731},
+        {lat: 41.26132375379901, lng: 28.739236593246464},
+        {lat: 41.259553469375234, lng: 28.739279508590702},
+        {lat: 41.2596139582453, lng: 28.745630979537967},
+        {lat: 41.26140037094814, lng: 28.74560415744782},
+        {lat: 41.261420533340846, lng: 28.746473193168644},
+        {lat: 41.26259800627894, lng: 28.746451735496525}
     ],
     
     // Alternatif: Merkez + yarıçap (metre cinsinden)
-    radius: 35,  // Bina boyutuna uygun
+    radius: 250,  // Bina boyutuna uygun
     
     // İç mekan ayarları
     indoor: {
@@ -386,7 +473,7 @@ const BUILDING_CONFIG = {
 // 1. Map oluşturma
 const map = new L.Map("map", {
     center: BUILDING_CONFIG.center,
-    zoom: 20,  // Küçük bina için daha yakın zoom
+    zoom: 18,  // Bina için uygun zoom
     zoomControl: false,
 });
 
@@ -439,16 +526,16 @@ let doorLinesLatLng = [];
 const mapInfo = {
     viewBox: { width: 8206, height: 10713 },
     coordinates: {
-        maxLat: 37.42615722437654,   // Sağ üst lat
-        minLat: 37.42581950040381,   // Sol alt lat
-        maxLng: 31.852276238006343,  // Sağ alt lng
-        minLng: 31.851978335853158,  // Sol üst lng
+        maxLat: 41.26259800627894,    // Sağ üst lat
+        minLat: 41.259553469375234,   // Sol alt lat
+        maxLng: 28.746473193168644,   // Sağ alt lng
+        minLng: 28.73830854892731,    // Sol üst lng
     },
     center: BUILDING_CONFIG.center,
     bounds: BUILDING_CONFIG.bounds,
     maxBounds: [
-        [37.42550, 31.85165],  // Harita pan için geniş sınırlar
-        [37.42650, 31.85260],
+        [41.25850, 28.73700],  // Harita pan için geniş sınırlar
+        [41.26350, 28.74750],
     ],
     scale: 0.0000005,
 };
@@ -874,6 +961,32 @@ const control = new L.Control.SimpleLocate({
         }
     },
 }).addTo(map);
+
+// 10.5 Varsayılan Polygon'u Çiz (eğer BUILDING_CONFIG'de varsa)
+let defaultPolygonLayer = null;
+if (BUILDING_CONFIG.polygon && BUILDING_CONFIG.polygon.length >= 3) {
+    // Polygon köşelerini Leaflet formatına çevir
+    const polygonLatLngs = BUILDING_CONFIG.polygon.map(p => [p.lat, p.lng]);
+    
+    // Polygon'u haritada göster (yeşil renkte)
+    defaultPolygonLayer = L.polygon(polygonLatLngs, {
+        color: '#4CAF50',
+        fillColor: '#4CAF50',
+        fillOpacity: 0.15,
+        weight: 2,
+        dashArray: ''
+    }).addTo(map);
+    
+    // Control'e geofence'i set et
+    control.setGeofence({
+        bounds: BUILDING_CONFIG.bounds,
+        center: BUILDING_CONFIG.center,
+        radius: BUILDING_CONFIG.radius,
+        polygon: BUILDING_CONFIG.polygon
+    });
+    
+    console.log('✅ Varsayılan geofence polygon yüklendi:', BUILDING_CONFIG.polygon.length, 'köşe');
+}
 
 // 11. Kullanıcı konumu değiştiğinde kat ve en yakın kapı bilgisi hesaplama
 function onUserLocationUpdate(lat, lng, altitude) {

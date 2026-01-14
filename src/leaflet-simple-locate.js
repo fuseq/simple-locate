@@ -1347,9 +1347,47 @@
             // Wei Ye algoritması ile konumu filtrele
             const filteredPosition = this._applyWeiYeFilter(event);
             
-            // Konum reddedildiyse (null döndü) - marker'ı güncelleme!
+            // Konum reddedildiyse (null döndü) - marker'ı güncelleme, ama circle'ı gri göster
             if (!filteredPosition) {
-                console.log(`🚫 Reddedilen konum - marker güncellenmedi`);
+                console.log(`🚫 Reddedilen konum - marker güncellenmedi, circle gri gösterilecek`);
+                
+                // Ham konum bilgisini al (circle için) - Leaflet event formatı
+                const rawLat = event.latlng ? event.latlng.lat : null;
+                const rawLng = event.latlng ? event.latlng.lng : null;
+                const rawAccuracy = event.accuracy !== undefined ? event.accuracy : null;
+                
+                // Eğer ham konum varsa, circle'ı gri göster
+                if (rawLat && rawLng && rawAccuracy && this.options.drawCircle) {
+                    if (this._circle) {
+                        this._circle.setLatLng([rawLat, rawLng]);
+                        this._circle.setRadius(rawAccuracy);
+                        this._circle.setStyle({
+                            fillColor: '#9E9E9E',
+                            color: '#9E9E9E',
+                            fillOpacity: 0.1,
+                            opacity: 0.4,
+                            weight: 2,
+                            dashArray: '8 4'
+                        });
+                    } else {
+                        this._circle = L.circle([rawLat, rawLng], {
+                            radius: rawAccuracy,
+                            fillColor: '#9E9E9E',
+                            color: '#9E9E9E',
+                            fillOpacity: 0.1,
+                            opacity: 0.4,
+                            weight: 2,
+                            dashArray: '8 4'
+                        }).addTo(this._map);
+                    }
+                }
+                
+                // Marker'ı gizle (eğer varsa)
+                if (this._marker) {
+                    this._map.removeLayer(this._marker);
+                    this._marker = undefined;
+                }
+                
                 // Sadece callback'i çağır (istatistikler için)
                 if (this.options.afterDeviceMove) {
                     this.options.afterDeviceMove({
@@ -1379,8 +1417,45 @@
             // Bu, filtreleme sonrası konumun hala alan içinde olduğundan emin olur
             const finalGeofenceCheck = this._isInsideGeofence(filteredPosition.latitude, filteredPosition.longitude);
             if (!finalGeofenceCheck.inside) {
-                console.log(`🚫 Filtrelenmiş konum hala alan dışında - marker güncellenmeyecek`);
+                console.log(`🚫 Filtrelenmiş konum hala alan dışında - marker güncellenmeyecek, circle gri gösterilecek`);
                 this._locationStats.geofenceRejections++;
+                
+                // Konum bilgilerini kaydet (circle için)
+                this._latitude = filteredPosition.latitude;
+                this._longitude = filteredPosition.longitude;
+                this._accuracy = filteredPosition.accuracy;
+                
+                // Marker gizle, circle'ı gri göster
+                if (this._marker) {
+                    this._map.removeLayer(this._marker);
+                    this._marker = undefined;
+                }
+                
+                // Circle'ı gri renkte göster (alan dışı göstergesi)
+                if (this.options.drawCircle && this._accuracy) {
+                    if (this._circle) {
+                        this._circle.setLatLng([this._latitude, this._longitude]);
+                        this._circle.setRadius(this._accuracy);
+                        this._circle.setStyle({
+                            fillColor: '#9E9E9E',
+                            color: '#9E9E9E',
+                            fillOpacity: 0.1,
+                            opacity: 0.4,
+                            weight: 2,
+                            dashArray: '8 4'
+                        });
+                    } else {
+                        this._circle = L.circle([this._latitude, this._longitude], {
+                            radius: this._accuracy,
+                            fillColor: '#9E9E9E',
+                            color: '#9E9E9E',
+                            fillOpacity: 0.1,
+                            opacity: 0.4,
+                            weight: 2,
+                            dashArray: '8 4'
+                        }).addTo(this._map);
+                    }
+                }
                 
                 // Callback'i çağır
                 if (this.options.afterDeviceMove) {
@@ -1519,15 +1594,33 @@
             // ========== EK GÜVENLİK: MARKER GÜNCELLENİRKEN DE GEOFENCE KONTROLÜ ==========
             const markerGeofenceCheck = this._isInsideGeofence(this._latitude, this._longitude);
             if (!markerGeofenceCheck.inside) {
-                console.log(`🚫 Marker konumu alan dışında - marker gizleniyor`);
-                // Mevcut marker ve circle'ı gizle
+                console.log(`🚫 Marker konumu alan dışında - marker gizleniyor, circle gri gösteriliyor`);
+                // Marker'ı gizle
                 if (this._marker) {
                     this._map.removeLayer(this._marker);
                     this._marker = undefined;
                 }
+                // Circle'ı gri renkte göster (alan dışı göstergesi)
                 if (this._circle) {
-                    this._map.removeLayer(this._circle);
-                    this._circle = undefined;
+                    this._circle.setStyle({
+                        fillColor: '#9E9E9E',  // Gri renk
+                        color: '#9E9E9E',
+                        fillOpacity: 0.1,
+                        opacity: 0.4,
+                        weight: 2,
+                        dashArray: '8 4'  // Kesikli çizgi
+                    });
+                } else if (this.options.drawCircle && this._accuracy) {
+                    // Circle yoksa oluştur (gri renkte)
+                    this._circle = L.circle([this._latitude, this._longitude], {
+                        radius: this._accuracy,
+                        fillColor: '#9E9E9E',
+                        color: '#9E9E9E',
+                        fillOpacity: 0.1,
+                        opacity: 0.4,
+                        weight: 2,
+                        dashArray: '8 4'
+                    }).addTo(this._map);
                 }
                 return;
             }
