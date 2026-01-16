@@ -219,11 +219,70 @@ svg path[stroke-dasharray="10, 6"] {
     transform: translateX(-50%) scale(0.98);
 }
 
+/* Ayarlar butonu */
+.leaflet-control-settings {
+    margin-top: 50px !important;
+}
+
+.settings-btn:active {
+    transform: scale(0.95);
+}
+
+/* Ayarlar paneli */
+#settings-panel {
+    animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+#settings-panel input[type="number"]:focus {
+    outline: none;
+    border-color: #2196F3;
+    box-shadow: 0 0 0 2px rgba(33, 150, 243, 0.2);
+}
+
+#save-settings:hover {
+    background: #45a049 !important;
+}
+
+#save-settings:active {
+    transform: scale(0.98);
+}
+
+#reset-settings:hover {
+    background: #e0e0e0 !important;
+}
+
+#reset-settings:active {
+    transform: scale(0.98);
+}
+
 /* Mobil uyumluluk */
 @media screen and (max-width: 640px) {
     .geofence-select-btn {
         padding: 6px 10px !important;
         font-size: 12px !important;
+    }
+    
+    .settings-btn {
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+    }
+    
+    #settings-panel {
+        width: 90% !important;
+        right: 5% !important;
+        left: 5% !important;
+        max-height: 80vh !important;
     }
     
     #geofence-message {

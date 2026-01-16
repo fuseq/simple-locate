@@ -84,6 +84,9 @@
             // Konum Geçerleme
             enablePositionValidation: true, // Konum doğrulama aktif
             positionValidationStrict: false, // Katı mod - şüpheli konumları tamamen reddet
+            
+            // Marker görünürlük eşiği (metre)
+            markerVisibilityThreshold: 15, // Accuracy bu değerin altındaysa marker gösterilir
 
             afterClick: null,
             afterMarkerAdd: null,
@@ -1389,11 +1392,12 @@
                 }
                 
                 // Sadece callback'i çağır (istatistikler için)
+                // İlk konum alan dışında ise ham konumu gönder (circle gösterimi için)
                 if (this.options.afterDeviceMove) {
                     this.options.afterDeviceMove({
-                        lat: this._latitude,  // Son geçerli konum
-                        lng: this._longitude,
-                        accuracy: this._accuracy,
+                        lat: rawLat || this._latitude,  // Ham konum veya son geçerli konum
+                        lng: rawLng || this._longitude,
+                        accuracy: rawAccuracy || this._accuracy,
                         angle: this._angle,
                         isFiltered: true,
                         isRejected: true,  // Reddedildi flag'i
@@ -1632,8 +1636,9 @@
                 return;
             }
 
-            // TEST: Doğruluk 15 metrenin üzerindeyse, sadece soluk konum dairesini göster, işaretçiyi gizle
-            const isLowAccuracy = this._accuracy > 15;
+            // Dinamik eşik: Accuracy eşiğin üzerindeyse, sadece soluk konum dairesini göster, işaretçiyi gizle
+            const threshold = this.options.markerVisibilityThreshold || 15;
+            const isLowAccuracy = this._accuracy > threshold;
 
             // Doğruluk dairesini her zaman güncelle - RADİKAL ÇÖZÜM
             if (this._circle) {
@@ -1782,7 +1787,8 @@
             // Her 100ms'de bir kontrol et ve gerekirse düzelt
             this._circleStyleInterval = setInterval(() => {
                 if (this._circle && this._circle._path && this._accuracy) {
-                    const isLowAccuracy = this._accuracy > 15;  // TEST: 15m eşiği
+                    const threshold = this.options.markerVisibilityThreshold || 15;
+                    const isLowAccuracy = this._accuracy > threshold;
                     const path = this._circle._path;
                     const currentDashArray = path.getAttribute('stroke-dasharray');
                     

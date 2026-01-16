@@ -840,6 +840,211 @@ function createGeofenceButton() {
 
 createGeofenceButton();
 
+// 9.6 Ayarlar Paneli oluştur
+function createSettingsPanel() {
+    const SettingsControl = L.Control.extend({
+        options: { position: 'topright' },
+        
+        onAdd: function(map) {
+            const container = L.DomUtil.create('div', 'leaflet-control-settings');
+            
+            const button = L.DomUtil.create('button', 'settings-btn', container);
+            button.innerHTML = '⚙️ Ayarlar';
+            button.title = 'Konum parametrelerini ayarla';
+            button.style.cssText = `
+                padding: 8px 12px;
+                border-radius: 8px;
+                border: 2px solid #9E9E9E;
+                background: white;
+                color: #9E9E9E;
+                font-size: 13px;
+                font-weight: 600;
+                cursor: pointer;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                transition: all 0.2s ease;
+            `;
+            
+            button.onmouseover = () => {
+                button.style.backgroundColor = '#9E9E9E';
+                button.style.color = 'white';
+            };
+            button.onmouseout = () => {
+                button.style.backgroundColor = 'white';
+                button.style.color = '#9E9E9E';
+            };
+            
+            let panel = null;
+            
+            L.DomEvent.disableClickPropagation(button);
+            L.DomEvent.on(button, 'click', function(e) {
+                L.DomEvent.stopPropagation(e);
+                
+                if (panel && panel.style.display !== 'none') {
+                    panel.style.display = 'none';
+                    return;
+                }
+                
+                if (!panel) {
+                    panel = document.createElement('div');
+                    panel.id = 'settings-panel';
+                    panel.style.cssText = `
+                        position: fixed;
+                        top: 60px;
+                        right: 10px;
+                        width: 280px;
+                        max-height: 70vh;
+                        overflow-y: auto;
+                        background: white;
+                        border-radius: 8px;
+                        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                        padding: 15px;
+                        z-index: 10000;
+                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    `;
+                    
+                    panel.innerHTML = `
+                        <div style="font-weight: bold; margin-bottom: 15px; font-size: 16px; border-bottom: 2px solid #e0e0e0; padding-bottom: 10px;">
+                            ⚙️ Ayarlar
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">
+                                Marker Görünürlük Eşiği (m):
+                            </label>
+                            <input type="number" id="marker-threshold" value="${control.options.markerVisibilityThreshold || 15}" 
+                                   min="5" max="100" step="1" 
+                                   style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                            <small style="color: #666; font-size: 11px;">Accuracy bu değerin altındaysa marker gösterilir</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">
+                                Max Accuracy (m):
+                            </label>
+                            <input type="number" id="max-accuracy" value="${control.options.maxAcceptableAccuracy || 50}" 
+                                   min="10" max="200" step="5" 
+                                   style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                            <small style="color: #666; font-size: 11px;">Bu değerin üzerindeki konumlar reddedilir</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">
+                                Max İç Mekan Hızı (m/s):
+                            </label>
+                            <input type="number" id="max-speed" value="${control.options.maxIndoorSpeed || 2.0}" 
+                                   min="0.5" max="10" step="0.5" 
+                                   style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                            <small style="color: #666; font-size: 11px;">İç mekanda maksimum yürüyüş hızı</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">
+                                Median Window Size:
+                            </label>
+                            <input type="number" id="median-window" value="${control.options.medianWindowSize || 3}" 
+                                   min="3" max="15" step="1" 
+                                   style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                            <small style="color: #666; font-size: 11px;">Median filtre pencere boyutu</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-size: 13px; font-weight: 500;">
+                                Low Pass Tau:
+                            </label>
+                            <input type="number" id="lowpass-tau" value="${control.options.lowPassFilterTau || 0.5}" 
+                                   min="0.1" max="5" step="0.1" 
+                                   style="width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                            <small style="color: #666; font-size: 11px;">Low pass filtre zaman sabiti</small>
+                        </div>
+                        
+                        <button id="save-settings" style="
+                            width: 100%;
+                            padding: 10px;
+                            background: #4CAF50;
+                            color: white;
+                            border: none;
+                            border-radius: 4px;
+                            font-size: 14px;
+                            font-weight: 600;
+                            cursor: pointer;
+                            margin-top: 10px;
+                        ">💾 Ayarları Kaydet</button>
+                        
+                        <button id="reset-settings" style="
+                            width: 100%;
+                            padding: 8px;
+                            background: #f5f5f5;
+                            color: #333;
+                            border: 1px solid #ddd;
+                            border-radius: 4px;
+                            font-size: 12px;
+                            cursor: pointer;
+                            margin-top: 8px;
+                        ">🔄 Varsayılana Dön</button>
+                    `;
+                    
+                    document.body.appendChild(panel);
+                    
+                    // Kaydet butonu
+                    document.getElementById('save-settings').onclick = () => {
+                        const markerThreshold = parseFloat(document.getElementById('marker-threshold').value);
+                        const maxAccuracy = parseFloat(document.getElementById('max-accuracy').value);
+                        const maxSpeed = parseFloat(document.getElementById('max-speed').value);
+                        const medianWindow = parseInt(document.getElementById('median-window').value);
+                        const lowPassTau = parseFloat(document.getElementById('lowpass-tau').value);
+                        
+                        control.options.markerVisibilityThreshold = markerThreshold;
+                        control.options.maxAcceptableAccuracy = maxAccuracy;
+                        control.options.maxIndoorSpeed = maxSpeed;
+                        control.options.medianWindowSize = medianWindow;
+                        control.options.lowPassFilterTau = lowPassTau;
+                        
+                        // Median filter window size'ı güncelle
+                        control._medianFilter.windowSize = medianWindow;
+                        
+                        panel.style.display = 'none';
+                        
+                        // Başarı mesajı
+                        const msg = document.createElement('div');
+                        msg.textContent = '✅ Ayarlar kaydedildi!';
+                        msg.style.cssText = `
+                            position: fixed;
+                            top: 20px;
+                            left: 50%;
+                            transform: translateX(-50%);
+                            padding: 12px 24px;
+                            background: #4CAF50;
+                            color: white;
+                            border-radius: 8px;
+                            z-index: 10001;
+                            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                        `;
+                        document.body.appendChild(msg);
+                        setTimeout(() => msg.remove(), 2000);
+                    };
+                    
+                    // Varsayılana dön butonu
+                    document.getElementById('reset-settings').onclick = () => {
+                        document.getElementById('marker-threshold').value = 15;
+                        document.getElementById('max-accuracy').value = 50;
+                        document.getElementById('max-speed').value = 2.0;
+                        document.getElementById('median-window').value = 3;
+                        document.getElementById('lowpass-tau').value = 0.5;
+                    };
+                }
+                
+                panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+            });
+            
+            return container;
+        }
+    });
+    
+    return new SettingsControl().addTo(map);
+}
+
+createSettingsPanel();
+
 // 10. SimpleLocate kontrolü - İSTANBUL HAVALİMANI İÇİN OPTİMİZE EDİLDİ
 const control = new L.Control.SimpleLocate({
     position: "topleft",
@@ -863,6 +1068,10 @@ const control = new L.Control.SimpleLocate({
     geofenceBounds: BUILDING_CONFIG.bounds,
     geofenceCenter: BUILDING_CONFIG.center,
     geofenceRadius: BUILDING_CONFIG.radius,
+    geofencePolygon: BUILDING_CONFIG.polygon,  // Varsayılan polygon
+    
+    // Marker görünürlük eşiği
+    markerVisibilityThreshold: 15,  // Accuracy bu değerin altındaysa marker gösterilir
     
     // Konum Güvenilirlik Sistemi
     maxAcceptableAccuracy: BUILDING_CONFIG.indoor.maxAccuracy,
